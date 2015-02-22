@@ -47,15 +47,21 @@ static pthread_cond_t send_cond = PTHREAD_COND_INITIALIZER;
 static u_int send_flags = 0;
 static pthread_mutex_t done_send_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t done_send_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t do_cal_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t do_cal_cond = PTHREAD_COND_INITIALIZER;
 
 static pthread_t rtl_read_thr[MAX_RCVRS];
 static pthread_t hpsdrsim_sendiq_thr[MAX_RCVRS];
+static pthread_t do_cal_thr;
 
 static int num_copy_rcvrs = 0, do_exit = 0;
 static int copy_rcvr[MAX_RCVRS];
 static u_char last_num_rcvrs = 0;
 static u_char last_rate = 0;
 static int last_freq[MAX_RCVRS] = { 0, };
+static int cal_rcvr = 0;
+static u_int cal_count[MAX_RCVRS] = {0};
+static float dcIlast[MAX_RCVRS] = {0.0f}, dcQlast[MAX_RCVRS] = {0.0f};
 
 static int common_freq = 0;
 
@@ -73,17 +79,17 @@ static int frame_offset2[8] =
 static int revealed = 0;
 static int running = 0;
 
-static unsigned char hw_address[6];
+static u_char hw_address[6];
 static char server_ip_address[16];
 
 static u_char buffer[MAX_BUFFER_LEN];
 static u_char payload[HPSDR_FRAME_LEN];
 
 static u_int hpsdr_sequence = 0;
-
 static u_int pc_sequence;
 
 static float rtl_lut[4][256];
+static u_char fft_buf[RTL_READ_COUNT];
 
 void
 rtl_sighandler(int signum) {
@@ -535,16 +541,16 @@ hpsdrsim_thread(void* arg) {
 						ftime(&mcb.freq_ttime[j]);
 						if(((((mcb.freq_ttime[j].time * 1000) + mcb.freq_ttime[j].millitm) -
 							(mcb.freq_ltime[j].time * 1000) + mcb.freq_ltime[j].millitm)) > 200) {
-							i = rtlsdr_set_center_freq(mcb.rcb[j].rtldev, mcb.rcb[j].new_freq);
+							i = mcb.rcb[j].new_freq + mcb.up_xtal + mcb.freq_offset[j];
+							i = rtlsdr_set_center_freq(mcb.rcb[j].rtldev, i);
 							if(i < 0) {
-								printf("WARNING: Failed to set dongle# %d to freq %d with offset %d\n",
-									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq - mcb.freq_offset[j],
-									mcb.rcb[j].new_freq);
+								printf("WARNING: Failed to set rcvr %d to freq %d with offset %d\n",
+									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
 							} else {
-								printf("Set dongle# %d to freq %d with offset %d\n",
-									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq - mcb.freq_offset[j],
-									mcb.rcb[j].new_freq);
+								printf("Set rcvr %d to freq %d with offset %d\n",
+									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
 							}
+							mcb.rcb[j].curr_freq = mcb.rcb[j].new_freq;
 							mcb.rcb[j].new_freq = 0;
 						}
 					}
@@ -557,10 +563,10 @@ hpsdrsim_thread(void* arg) {
 
 							if(common_freq) {
 								for(i = 0; i < mcb.active_num_rcvrs; i++) {
-									mcb.rcb[i].new_freq = freq + mcb.freq_offset[i];
+									mcb.rcb[i].new_freq = freq;
 								}
 							} else if(j < mcb.total_num_rcvrs) {
-								mcb.rcb[j].new_freq = freq + mcb.freq_offset[j];
+								mcb.rcb[j].new_freq = freq;
 							}
 							last_freq[j] = freq;
 							ftime(&mcb.freq_ltime[j]);
@@ -726,8 +732,14 @@ hpsdrsim_stop_threads() {
 	pthread_cond_broadcast(&iqready_cond);
 	pthread_mutex_unlock(&iqready_lock);
 
+	pthread_mutex_lock(&do_cal_lock);
+	mcb.do_cal = -1;
+	pthread_cond_broadcast(&do_cal_cond);
+	pthread_mutex_unlock(&do_cal_lock);
+
 	pthread_cancel(watchdog_thread_id);
 	pthread_cancel(hpsdrsim_thread_id);
+	pthread_cancel(do_cal_thr);
 }
 
 void*
@@ -767,6 +779,11 @@ hpsdrsim_watchdog_thread(void* arg) {
 	pthread_cond_broadcast(&iqready_cond);
 	pthread_mutex_unlock(&iqready_lock);
 
+	pthread_mutex_lock(&do_cal_lock);
+	mcb.do_cal = -1;
+	pthread_cond_broadcast(&do_cal_cond);
+	pthread_mutex_unlock(&do_cal_lock);
+
 	// set everything back to a 1 rcvr state
 	mcb.rcvrs_mask = 1;
 	mcb.rcb[0].rcvr_mask = 1;
@@ -793,16 +810,115 @@ hpsdrsim_watchdog_thread(void* arg) {
 	printf("Setting hpsdr output rate to %d hz\n", mcb.output_rate);
 	hpsdr_sequence = 0;
 
+	if (mcb.calibrate) {
+		printf("\nfreq_offset ");
+		for(i = 0; i < mcb.total_num_rcvrs; i++)
+			printf("%d%s", mcb.freq_offset[i],
+				(mcb.total_num_rcvrs - 1 != i) ? ", " : "\n\n");
+	}
+
 	//printf("EXITING hpsdrsim_watchdog_thread\n");
 	pthread_exit(NULL);
 }
 
+void*
+do_cal_thr_func(void* arg) {
+	struct rcvr_cb* rcb;
+	int i, n;
+	float var = 3000.0f; // freq in hz from the calibration freq we care about
+	float magnitude, last, current;
+	float bin = (float)RTL_SAMPLE_RATE / FFT_SIZE;
+	static int last_offset[MAX_RCVRS] = {0};
+
+	//printf("ENTERING do_cal_thr_func()\n");
+
+	while(!do_exit) {
+
+		pthread_mutex_lock(&do_cal_lock);
+		while(mcb.do_cal < 0) {
+			pthread_cond_wait(&do_cal_cond, &do_cal_lock);
+		}
+		pthread_mutex_unlock(&do_cal_lock);
+
+		//printf("do_cal_thr_func() STATE 1\n");
+
+		rcb = &mcb.rcb[mcb.do_cal];
+
+		// this is an attempt to check whether the user wants to calibrate
+		// from the upconvertor xtal frequency or an HF station
+		i = (abs(mcb.up_xtal - mcb.calibrate) > var)
+			? mcb.up_xtal + mcb.calibrate : mcb.calibrate;
+		rtlsdr_set_center_freq(rcb->rtldev, i);
+		// give some time for the dongle to lock in
+		usleep(5000);
+
+		//printf("do_cal_thr_func() dongle calibrate freq: %d\n", i);
+
+		mcb.do_cal = CAL_STATE_1;
+
+		pthread_mutex_lock(&do_cal_lock);
+		while(mcb.do_cal == CAL_STATE_1) {
+			pthread_cond_wait(&do_cal_cond, &do_cal_lock);
+		}
+		pthread_mutex_unlock(&do_cal_lock);
+
+		//printf("do_cal_thr_func() STATE 2\n");
+
+		for (n = 0; n < (RTL_READ_COUNT / 2) / FFT_SIZE; ++n) {
+			for(i = 0; i < FFT_SIZE; ++i) {
+			// Normalize the IQ data and put it as the complex FFT input
+			rcb->fftIn[i][0] = ((float)fft_buf[i * 2 + n * FFT_SIZE] - 127.0f) * 0.008f;
+			rcb->fftIn[i][1] = ((float)fft_buf[i * 2 + n * FFT_SIZE + 1] - 127.0f) * 0.008f;
+			}
+			fftw_execute(rcb->fftPlan);
+			for (i = 0; i < FFT_SIZE; ++i) {
+				// Calculate the logarithmic magnitude of the complex FFT output
+				magnitude = 0.05 * log(rcb->fftOut[i][0] * rcb->fftOut[i][0]
+					+ rcb->fftOut[i][1] * rcb->fftOut[i][1] + 1.0);
+
+				// Average the signal
+				//averaged[i] -= 0.01f * (averaged[i] - magnitude);
+				rcb->fft_averaged[i] = magnitude;
+			}
+		}
+
+		last = 0.0f;
+		for (i = (FFT_SIZE / 2) - (var / bin); i < (FFT_SIZE / 2) + (var / bin); ++i) {
+			current = rcb->fft_averaged[(i + FFT_SIZE / 2) % FFT_SIZE];
+			if (current > last) {
+				//printf("DEBUG c:%f l:%f n:%d i:%d\n", current, last, n, i);
+				last = current;
+				n = i;
+			}
+		}
+		current = (float)mcb.calibrate + ((n - (FFT_SIZE / 2)) * bin);
+		i = (int)current - mcb.calibrate;
+		//printf("rcvr:%d i:%d n:%d l:%f c:%f o:%d\n", rcb->rcvr_num+1, i, n, last, current, (int)(current - mcb.calibrate));
+
+		// only update offset if it's been established and we're not changing it drastically
+		if ((last_offset[rcb->rcvr_num] == 0) || (abs(last_offset[rcb->rcvr_num] - i) < 200)) {
+			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
+			if (mcb.freq_offset[rcb->rcvr_num] != i) {
+				printf("calibration update, rcvr %d old offset %d new offset %d\n",
+					rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num], i);
+				mcb.freq_offset[rcb->rcvr_num] = i;
+			}
+			last_offset[rcb->rcvr_num] = i;
+		} else
+			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + last_offset[rcb->rcvr_num]);
+
+		//printf("do_cal_thr_func() STATE 3\n");
+		mcb.do_cal = CAL_STATE_3;
+	}
+	pthread_exit(NULL);
+	//printf("EXITING do_cal_thr_func()\n");
+}
+
 void
 rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
-	int i;
+	int i, cal_time = 15; // calibrate every X seconds
 	struct rcvr_cb* rcb = (struct rcvr_cb*) ctx;
 	float dcI, dcQ;
-	static float dcIlast[MAX_RCVRS] = {0.0f}, dcQlast[MAX_RCVRS] = {0.0f};
 
 	if(do_exit || !running || !ctx) {
 		return;
@@ -818,7 +934,41 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 		return;
 	}
 
-	pthread_mutex_lock(&iqready_lock);
+#if 1
+	cal_count[rcb->rcvr_num] += 1;
+
+	// periodically calibrate each dongle if enabled
+	if (mcb.calibrate && (cal_rcvr == rcb->rcvr_num)) {
+		if (0 == (cal_count[rcb->rcvr_num] % (cal_time * 20))) {
+			if (mcb.do_cal == -1) {
+				pthread_mutex_lock(&do_cal_lock);
+				mcb.do_cal = rcb->rcvr_num;
+				pthread_cond_broadcast(&do_cal_cond);
+				pthread_mutex_unlock(&do_cal_lock);
+			//printf("rtlsdr_callback() STATE 1\n");
+			}
+		}
+		else if (mcb.do_cal == CAL_STATE_1) {
+			memcpy(fft_buf, buf, RTL_READ_COUNT);
+			pthread_mutex_lock(&do_cal_lock);
+			mcb.do_cal = CAL_STATE_2;
+			pthread_cond_broadcast(&do_cal_cond);
+			pthread_mutex_unlock(&do_cal_lock);
+			//printf("rtlsdr_callback() STATE 2\n");
+
+			pthread_mutex_lock(&iqready_lock);
+			rcvr_flags |= rcb->rcvr_mask;
+			pthread_cond_broadcast(&iqready_cond);
+			pthread_mutex_unlock(&iqready_lock);
+			return;
+		}
+		else if (mcb.do_cal == CAL_STATE_3) {
+			mcb.do_cal = -1;
+			cal_rcvr = (cal_rcvr == mcb.active_num_rcvrs - 1) ? 0 : cal_rcvr + 1;
+			//printf("rtlsdr_callback() STATE 3\n");
+		}
+	}
+#endif
 
 	// Convert to float and copy data to buffer, offset by coefficient length * 2.
 	// The downsample routine will move the previous last coefficient length * 2
@@ -839,6 +989,8 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 #endif
 	}
 
+	// below pthread_mutex_lock may have to be before loop above? TODO
+	pthread_mutex_lock(&iqready_lock);
 	rcvr_flags |= rcb->rcvr_mask;
 	pthread_cond_broadcast(&iqready_cond);
 	pthread_mutex_unlock(&iqready_lock);
@@ -987,6 +1139,7 @@ usage(char* progname) {
 	  "\t[-e use serial eeprom number]\n"
 	  "\t[-h help (prints this usage)]\n"
 	  "\t[-i ip address assigned to network interface]\n"
+	  "\t[-l freq in hz of the upconvertor xtal]\n"
 	  "\t[-m signal multiplier (default 1)]\n"
 	  "\t[-r number of rcvrs to use (defaults to all detected)]\n"
 #ifndef _WIN32
@@ -1058,6 +1211,10 @@ parse_config(char* conf_file) {
 				mcb.signal_multiplier = atoi(value);
 			} else if(!strcmp("total_num_rcvrs", option)) {
 				mcb.total_num_rcvrs = atoi(value);
+			} else if(!strcmp("up_xtal", option)) {
+				mcb.up_xtal = atoi(value);
+			} else if(!strcmp("calibrate", option)) {
+				mcb.calibrate = atoi(value);
 			} else if(!strcmp("ip_addr", option)) {
 				strcpy(mcb.ip_addr, value);
 			}
@@ -1068,15 +1225,6 @@ parse_config(char* conf_file) {
 		printf("Cannot find %s\n", conf_file);
 		exit (-1);
 	}
-}
-
-void
-calibrate(void) {
-	printf("Calibrating dongles to %d Hz...\n", mcb.calibrate);
-	hpsdrsim_stop_threads();
-	do_exit = 1;
-	running = 0;
-	return;
 }
 
 int
@@ -1100,8 +1248,10 @@ main(int argc, char* argv[]) {
 	mcb.output_rate = 48000;
 	strcpy(mcb.ip_addr, "192.168.1.1");
 	mcb.serialstr[0] = 0;
-	mcb.signal_multiplier = 1;
+	mcb.signal_multiplier = 50;
+	mcb.do_cal = -1;
 	mcb.calibrate = 0;
+	mcb.up_xtal = 0;
 
 	ftime(&test_start_time);
 
@@ -1115,7 +1265,7 @@ main(int argc, char* argv[]) {
 		memset(&mcb.freq_ltime[i], 0, sizeof(mcb.freq_ltime[i]));
 	}
 
-	while(loop && ((opt = getopt(argc, argv, "C:c:a:d:e:f:g:hi:m:o:p:r:s:tv")) != -1)) {
+	while(loop && ((opt = getopt(argc, argv, "C:c:a:d:e:f:g:hi:l:m:o:p:r:s:v")) != -1)) {
 		switch(opt) {
 		case 'a':
 			r = set_option(mcb.agc_mode, optarg);
@@ -1149,6 +1299,10 @@ main(int argc, char* argv[]) {
 
 		case 'i':
 			strcpy(mcb.ip_addr, optarg);
+			break;
+
+		case 'l':
+			mcb.up_xtal = atoi(optarg);
 			break;
 
 		case 'm':
@@ -1207,6 +1361,8 @@ main(int argc, char* argv[]) {
 	printf("  number of rcvrs:\t%d\n", mcb.total_num_rcvrs);
 	printf("  hpsdr output rate:\t%d hz\n", mcb.output_rate);
 	printf("  signal multiplier\t%d\n", mcb.signal_multiplier);
+	if (mcb.calibrate) printf("  calibration freq:\t%d hz\n", mcb.calibrate);
+	if (mcb.up_xtal) printf("  up_xtal freq:\t\t%d hz\n", mcb.up_xtal);
 	printf("  sound device:\t\t%s\n",
 	       (0 == mcb.sound_dev[0]) ? "none" : mcb.sound_dev);
 
@@ -1238,6 +1394,8 @@ main(int argc, char* argv[]) {
 	pthread_cond_init(&send_cond, NULL);
 	pthread_mutex_init(&done_send_lock, NULL);
 	pthread_cond_init(&done_send_cond, NULL);
+	pthread_mutex_init(&do_cal_lock, NULL);
+	pthread_cond_init(&do_cal_cond, NULL);
 
 #ifndef _WIN32
 	if(mcb.sound_dev[0])
@@ -1272,6 +1430,8 @@ main(int argc, char* argv[]) {
 		r = float_malloc_align((void**) & (mcb.rcb[i].iq_buf), 16,
 		                   RTL_READ_COUNT * sizeof(float));
 
+		mcb.rcb[i].fftPlan = fftw_plan_dft_1d(FFT_SIZE, mcb.rcb[i].fftIn, mcb.rcb[i].fftOut, FFTW_FORWARD, FFTW_ESTIMATE);
+
 		if(r != 0) {
 			printf("failed to allocate iq_buf aligned memory: r=%d\n", r);
 			return (r);
@@ -1290,7 +1450,12 @@ main(int argc, char* argv[]) {
 		}
 	}
 
-	if(mcb.calibrate) calibrate();
+	if(mcb.calibrate) {
+		if((r = pthread_create(&do_cal_thr, NULL, do_cal_thr_func, &mcb))) {
+			printf("pthread_create failed on do_cal_thr_func: r=%d\n", r);
+			return (r);
+		}
+	}
 
 	while(!do_exit) {
 

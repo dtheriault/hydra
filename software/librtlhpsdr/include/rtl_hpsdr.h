@@ -36,6 +36,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <ifaddrs.h>
+#include <fftw3.h>
 #else
 #include <winsock2.h>
 #include <windows.h>
@@ -68,10 +69,14 @@
 #define IQ_FRAME_DATA_LEN 63
 #define DOWNSAMPLE_192 8    // downsample value used to get 192khz
 #define RTL_SAMPLE_RATE (192000 * DOWNSAMPLE_192)
-#define RTL_READ_COUNT (8192 * DOWNSAMPLE_192)
+#define RTL_READ_COUNT (16384 * DOWNSAMPLE_192)
 #define MAX_RCVRS 8     // cuSDR64 limits this to 7
 #define IQ_FRAME_DATA_LEN 63
 #define MAXSTR 128
+#define FFT_SIZE 65536
+#define CAL_STATE_1 -2
+#define CAL_STATE_2 -3
+#define CAL_STATE_3 -4
 
 struct main_cb {
 	int total_num_rcvrs;
@@ -81,6 +86,7 @@ struct main_cb {
 	int frame_offset1;
 	int frame_offset2;
 	int output_rate;
+	int up_xtal;
 	char sound_dev[MAXSTR];
 	char ip_addr[MAXSTR];
 	char serialstr[MAXSTR];
@@ -92,16 +98,22 @@ struct main_cb {
 	int freq_offset[MAX_RCVRS + 1];
 	int rcvr_order[MAX_RCVRS + 1];
 	int signal_multiplier;
+	int do_cal;
 	int calibrate;
 
 	struct timeb freq_ltime[MAX_RCVRS];
 	struct timeb freq_ttime[MAX_RCVRS];
 
 	struct rcvr_cb {
+		fftw_complex fftIn[sizeof(fftw_complex) * FFT_SIZE];
+		fftw_complex fftOut[sizeof(fftw_complex) * FFT_SIZE];
+		fftw_plan fftPlan;
+		float fft_averaged[FFT_SIZE * sizeof(float)];
 		float dest[4] __attribute__((aligned(16)));
 
 		int rcvr_num;
 		int new_freq;
+		int curr_freq;
 		int output_rate;
 		u_int rcvr_mask;
 		rtlsdr_dev_t* rtldev;
