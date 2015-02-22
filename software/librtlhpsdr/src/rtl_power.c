@@ -135,6 +135,7 @@ enum time_modes { VERBOSE_TIME, EPOCH_TIME };
 
 struct misc_settings
 {
+	int tfreq;
 	int boxcar;
 	int comp_fir_size;
 	int peak_hold;
@@ -168,6 +169,7 @@ void usage(void)
 		//"\t[-t threads (default: 1)]\n"
 		"\t[-d device_index (default: 0)]\n"
 		"\t[-g tuner_gain (default: automatic)]\n"
+		"\t[-o target freq (default: 0)]\n"
 		"\t[-p ppm_error (default: 0)]\n"
 		"\tfilename (a '-' dumps samples to stdout)\n"
 		"\t  omitting the filename also uses stdout\n"
@@ -947,11 +949,18 @@ void scanner(void)
 	}
 }
 
-void csv_dbm(struct tuning_state *ts)
+long map(long x, long in_min, long in_max, long out_min, long out_max)
 {
-	int i, len;
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+void csv_dbm(struct tuning_state *ts, struct misc_settings *ms)
+{
+	int i, len, hi_cnt;
+	static int fcnt = 0, favg = 0;
 	int64_t tmp;
 	double dbm;
+	double hi_dbm = -100.0f;
 	char *sep = ", ";
 	len = 1 << ts->bin_e;
 	/* fix FFT stuff quirks */
@@ -982,9 +991,17 @@ void csv_dbm(struct tuning_state *ts)
 			fprintf(file, "%.5g%s", dbm, sep);
 		} else {
 			dbm = 10 * log10(dbm);
-			fprintf(file, "%.2f%s", dbm, sep);
+			if (0 == ms->tfreq)
+				fprintf(file, "%.2f%s", dbm, sep);
+		}
+		if (dbm > hi_dbm) {
+			hi_dbm = dbm;
+			hi_cnt = i;
 		}
 	}
+	hi_cnt = map(hi_cnt, ts->crop_i1, ts->crop_i2, ts->freq_low, ts->freq_high);
+	favg += hi_cnt;
+	fprintf(file, "\nHi DBM = %.2f, freq = %d, avg = %d offset = %d\n", hi_dbm, hi_cnt, favg/++fcnt, hi_cnt - ms->tfreq);
 	for (i=0; i<len; i++) {
 		ts->avg[i] = 0L;
 	}
@@ -1002,6 +1019,7 @@ void init_misc(struct misc_settings *ms)
 	ms->smoothing = 0;
 	ms->peak_hold = 0;
 	ms->linear = 0;
+	ms->tfreq = 0;
 	ms->time_mode = VERBOSE_TIME;
 }
 
@@ -1034,7 +1052,7 @@ int main(int argc, char **argv)
 	init_misc(&ms);
 	strcpy(dev_label, "DEFAULT");
 
-	while ((opt = getopt(argc, argv, "f:i:s:r:t:d:g:p:e:w:c:F:1EPLD:Oh")) != -1) {
+	while ((opt = getopt(argc, argv, "f:i:s:r:t:d:g:o:p:e:w:c:F:1EPLD:Oh")) != -1) {
 		switch (opt) {
 		case 'f': // lower:upper:bin_size
 			if (f_set) {
@@ -1092,6 +1110,9 @@ int main(int argc, char **argv)
 			break;
 		case 'r':
 			ms.target_rate = (int)atofs(optarg);
+			break;
+		case 'o':
+			ms.tfreq = atoi(optarg);
 			break;
 		case '1':
 			single = 1;
@@ -1234,7 +1255,7 @@ int main(int argc, char **argv)
 		}
 		for (i=0; i<tune_count; i++) {
 			fprintf(file, "%s, ", t_str);
-			csv_dbm(&tunes[i]);
+			csv_dbm(&tunes[i],&ms);
 		}
 		fflush(file);
 		while (time(NULL) >= next_tick) {
@@ -1265,4 +1286,3 @@ int main(int argc, char **argv)
 }
 
 // vim: tabstop=8:softtabstop=8:shiftwidth=8:noexpandtab
-
