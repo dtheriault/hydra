@@ -59,8 +59,9 @@ static int copy_rcvr[MAX_RCVRS];
 static u_char last_num_rcvrs = 0;
 static u_char last_rate = 0;
 static int last_freq[MAX_RCVRS] = { 0, };
-static int cal_rcvr = 0;
-static u_int cal_count[MAX_RCVRS] = {0};
+static int cal_rcvr = -1;
+static int cal_rcvr_mask = 0;
+static int cal_count[MAX_RCVRS] = {0};
 static float dcIlast[MAX_RCVRS] = {0.0f}, dcQlast[MAX_RCVRS] = {0.0f};
 
 static int common_freq = 0;
@@ -852,7 +853,7 @@ do_cal_thr_func(void* arg) {
 		// give some time for the dongle to lock in
 		usleep(5000);
 
-		//printf("do_cal_thr_func() dongle calibrate freq: %d\n", i);
+		//printf("do_cal_thr_func() dongle %d calibrate freq: %d\n", rcb->rcvr_num+1, i);
 
 		mcb.do_cal = CAL_STATE_1;
 
@@ -904,8 +905,9 @@ do_cal_thr_func(void* arg) {
 				mcb.freq_offset[rcb->rcvr_num] = i;
 			}
 			last_offset[rcb->rcvr_num] = i;
-		} else
+		} else {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + last_offset[rcb->rcvr_num]);
+		}
 
 		//printf("do_cal_thr_func() STATE 3\n");
 		mcb.do_cal = CAL_STATE_3;
@@ -916,7 +918,7 @@ do_cal_thr_func(void* arg) {
 
 void
 rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
-	int i, cal_time = 15; // calibrate every X seconds
+	int i, cal_time = 5; // calibrate every X seconds
 	struct rcvr_cb* rcb = (struct rcvr_cb*) ctx;
 	float dcI, dcQ;
 
@@ -936,36 +938,42 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 
 #if 1
 	cal_count[rcb->rcvr_num] += 1;
+	if (cal_rcvr_mask == 0) cal_rcvr_mask = mcb.rcvrs_mask;
 
 	// periodically calibrate each dongle if enabled
-	if (mcb.calibrate && (cal_rcvr == rcb->rcvr_num)) {
-		if (0 == (cal_count[rcb->rcvr_num] % (cal_time * 20))) {
+	if (mcb.calibrate) {
+		if ((cal_rcvr < 0) || (cal_rcvr == rcb->rcvr_num)) {
 			if (mcb.do_cal == -1) {
+				if ((cal_rcvr_mask & (1 << rcb->rcvr_num)) && (cal_count[rcb->rcvr_num] > (cal_time * 20))) {
+					cal_rcvr_mask ^= (1 << rcb->rcvr_num);
+					cal_rcvr = rcb->rcvr_num;
+					cal_count[rcb->rcvr_num] = 0;
+					pthread_mutex_lock(&do_cal_lock);
+					mcb.do_cal = rcb->rcvr_num;
+					pthread_cond_broadcast(&do_cal_cond);
+					pthread_mutex_unlock(&do_cal_lock);
+					//printf("rtlsdr_callback() STATE 1\n");
+				}
+			}
+			else if (mcb.do_cal == CAL_STATE_1) {
+				memcpy(fft_buf, buf, RTL_READ_COUNT);
 				pthread_mutex_lock(&do_cal_lock);
-				mcb.do_cal = rcb->rcvr_num;
+				mcb.do_cal = CAL_STATE_2;
 				pthread_cond_broadcast(&do_cal_cond);
 				pthread_mutex_unlock(&do_cal_lock);
-			//printf("rtlsdr_callback() STATE 1\n");
-			}
-		}
-		else if (mcb.do_cal == CAL_STATE_1) {
-			memcpy(fft_buf, buf, RTL_READ_COUNT);
-			pthread_mutex_lock(&do_cal_lock);
-			mcb.do_cal = CAL_STATE_2;
-			pthread_cond_broadcast(&do_cal_cond);
-			pthread_mutex_unlock(&do_cal_lock);
-			//printf("rtlsdr_callback() STATE 2\n");
+				//printf("rtlsdr_callback() STATE 2\n");
 
-			pthread_mutex_lock(&iqready_lock);
-			rcvr_flags |= rcb->rcvr_mask;
-			pthread_cond_broadcast(&iqready_cond);
-			pthread_mutex_unlock(&iqready_lock);
-			return;
-		}
-		else if (mcb.do_cal == CAL_STATE_3) {
-			mcb.do_cal = -1;
-			cal_rcvr = (cal_rcvr == mcb.active_num_rcvrs - 1) ? 0 : cal_rcvr + 1;
-			//printf("rtlsdr_callback() STATE 3\n");
+				pthread_mutex_lock(&iqready_lock);
+				rcvr_flags |= rcb->rcvr_mask;
+				pthread_cond_broadcast(&iqready_cond);
+				pthread_mutex_unlock(&iqready_lock);
+				return;
+			}
+			else if (mcb.do_cal == CAL_STATE_3) {
+				mcb.do_cal = -1;
+				cal_rcvr = -1;
+				//printf("rtlsdr_callback() STATE 3\n");
+			}
 		}
 	}
 #endif
