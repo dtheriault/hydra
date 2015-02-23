@@ -758,6 +758,7 @@ hpsdrsim_stop_threads() {
 		for(i = 0; i < mcb.total_num_rcvrs; i++)
 			printf("%d%s", mcb.freq_offset[i],
 				(mcb.total_num_rcvrs - 1 != i) ? ", " : "\n\n");
+	}
 }
 
 void*
