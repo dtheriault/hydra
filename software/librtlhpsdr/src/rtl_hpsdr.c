@@ -98,6 +98,7 @@ void
 rtl_sighandler(int signum) {
 	printf("Signal caught, exiting!\n");
 	do_exit = 1;
+	running = 0;
 	hpsdrsim_stop_threads();
 #ifdef _WIN32
 	exit(0); // RRK FIXME
@@ -736,11 +737,6 @@ hpsdrsim_stop_threads() {
 	}
 
 	// unblock held mutexes so we can exit
-	pthread_mutex_lock(&do_cal_lock);
-	mcb.cal_state = CAL_STATE_0;
-	pthread_cond_broadcast(&do_cal_cond);
-	pthread_mutex_unlock(&do_cal_lock);
-
 	pthread_mutex_lock(&send_lock);
 	send_flags = mcb.rcvrs_mask;
 	pthread_cond_broadcast(&send_cond);
@@ -755,6 +751,7 @@ hpsdrsim_stop_threads() {
 	pthread_cancel(watchdog_thread_id);
 	pthread_cancel(hpsdrsim_thread_id);
 
+	mcb.cal_state = 0;
 	if (mcb.calibrate) {
 		printf("\nfreq_offset ");
 		for(i = 0; i < mcb.total_num_rcvrs; i++)
@@ -786,7 +783,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 
 	// sleep for 1 second, check if we're sending packets
 	while(1) {
-		sleep(1);
+		sleep(2);
 
 		if(last_sequence == hpsdr_sequence) {
 			printf("No hpsdr packets sent for 1 second, restarting...\n");
@@ -825,11 +822,6 @@ OUT_ERR:
 	pthread_cond_broadcast(&iqready_cond);
 	pthread_mutex_unlock(&iqready_lock);
 
-	pthread_mutex_lock(&do_cal_lock);
-	mcb.cal_state = CAL_STATE_0;
-	pthread_cond_broadcast(&do_cal_cond);
-	pthread_mutex_unlock(&do_cal_lock);
-
 	// set everything back to a 1 rcvr state
 	mcb.rcvrs_mask = 1;
 	mcb.rcb[0].rcvr_mask = 1;
@@ -849,10 +841,10 @@ OUT_ERR:
 	mcb.frame_offset1 = frame_offset1[0];
 	mcb.frame_offset2 = frame_offset2[0];
 
+	mcb.cal_state = 0;
 	rcvr_flags &= 1;
 	send_flags &= 1;
 	last_num_rcvrs = last_rate = 0;
-	mcb.cal_state = CAL_STATE_0;
 	mcb.output_rate = 48000;
 	printf("Setting hpsdr output rate to %d hz\n", mcb.output_rate);
 	hpsdr_sequence = 0;
@@ -996,22 +988,10 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 		return;
 	}
 
-#if 0 //unneeded?
-	if(!ctx) {
-		perror("DELME rtlsdr_callback(): !ctx\n");
-		return;
-	}
-
-	if(rcb->rcvr_mask == 0) {
-		perror("DELME rtlsdr_callback(): rcb->rcvr_mask == 0\n");
-		return;
-	}
-
 	if(RTL_READ_COUNT != len) {
 		perror("rtlsdr_callback(): RTL_READ_COUNT != len!\n");
 		return;
 	}
-#endif
 
 #if 0
 	ftime(&test_end_time);
@@ -1110,8 +1090,8 @@ rtl_read_thr_func(void* arg) {
 	struct rcvr_cb* rcb = (struct rcvr_cb*) arg;
 	int r, i = rcb->rcvr_num;
 
-#if 1
 	//printf("ENTERING rtl_read_thr_func() rcvr %d\n", i+1);
+#if 1
 	r = rtlsdr_read_async(rcb->rtldev, rtlsdr_callback,
 	                      (void*)(&mcb.rcb[i]), 4, RTL_READ_COUNT);
 #else // simulate an rtl read
