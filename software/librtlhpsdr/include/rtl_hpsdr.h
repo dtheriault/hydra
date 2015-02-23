@@ -138,6 +138,7 @@ void load_packet(struct rcvr_cb* rcb);
 void rtl_sighandler(int signum);
 int get_addr(int sock);
 void hpsdrsim_reveal(void);
+int parse_config(char* conf_file);
 
 pthread_t hpsdrsim_thread_id;
 void* hpsdrsim_thread(void* arg);

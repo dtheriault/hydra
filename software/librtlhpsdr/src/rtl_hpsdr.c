@@ -20,6 +20,7 @@
 #include "rtl_hpsdr.h"
 #include <sched.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include "getopt/getopt.h"
@@ -79,6 +80,7 @@ static int frame_offset2[8] =
 
 static int revealed = 0;
 static int running = 0;
+static char conf_file[MAXSTR];
 
 static u_char hw_address[6];
 static char server_ip_address[16];
@@ -758,14 +760,26 @@ hpsdrsim_stop_threads() {
 		for(i = 0; i < mcb.total_num_rcvrs; i++)
 			printf("%d%s", mcb.freq_offset[i],
 				(mcb.total_num_rcvrs - 1 != i) ? ", " : "\n\n");
+	}
 }
 
 void*
 hpsdrsim_watchdog_thread(void* arg) {
-	int i;
+	int i, last_time = 0;
+	struct stat sb;
 	u_int last_sequence = 0xffffffff;
 
 	//printf("ENTERING hpsdrsim_watchdog_thread active rcvrs: %d\n", mcb.active_num_rcvrs);
+
+	// grab the last modification time on the config file if we're using it
+	if (conf_file[0] != 0) {
+		if (stat(conf_file, &sb) == -1) {
+			perror("stat");
+			goto OUT_ERR;
+		}
+		last_time = sb.st_mtime;
+	}
+	
 
 	//while(!running)
 	sleep(2);
@@ -780,8 +794,22 @@ hpsdrsim_watchdog_thread(void* arg) {
 		}
 
 		last_sequence = hpsdr_sequence;
+
+		// check to see if the config file changed
+		if (conf_file[0] != 0) {
+			if (stat(conf_file, &sb) == -1) {
+				perror("stat");
+				goto OUT_ERR;
+			}
+			if (last_time != sb.st_mtime) {
+				last_time = sb.st_mtime;
+				printf("config_file changed, reloading...\n");
+				parse_config(conf_file);
+			}
+		}
 	}
 
+OUT_ERR:
 	running = revealed = 0;
 
 	pthread_cancel(hpsdrsim_thread_id);
@@ -824,6 +852,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 	rcvr_flags &= 1;
 	send_flags &= 1;
 	last_num_rcvrs = last_rate = 0;
+	mcb.cal_state = CAL_STATE_0;
 	mcb.output_rate = 48000;
 	printf("Setting hpsdr output rate to %d hz\n", mcb.output_rate);
 	hpsdr_sequence = 0;
@@ -1292,7 +1321,6 @@ int
 main(int argc, char* argv[]) {
 	int i, opt, r = 0;
 	bool loop = true;
-	char conf_file[MAXSTR];
 	char serialstr[MAXSTR];
 	char* progname = basename(argv[0]);
         char vendor[256] = {0}, product[256] = {0}, serial[256] = {0};
