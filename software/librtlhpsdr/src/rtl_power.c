@@ -956,7 +956,7 @@ long map(long x, long in_min, long in_max, long out_min, long out_max)
 
 void csv_dbm(struct tuning_state *ts, struct misc_settings *ms)
 {
-	int i, len, hi_cnt;
+        int i, len, hi_cnt = 0;
 	static int fcnt = 0, favg = 0;
 	int64_t tmp;
 	double dbm;
