@@ -887,6 +887,11 @@ do_cal_thr_func(void* arg) {
 		}
 		pthread_mutex_unlock(&do_cal_lock);
 
+		// reset to the last calibrated freq to reduce the gap between
+		// capturing actual data, after the dongle frequencies have settled
+		rtlsdr_set_center_freq(rcb->rtldev,
+			rcb->curr_freq + mcb.up_xtal + last_offset[rcb->rcvr_num]);
+
 		//printf("do_cal_thr_func() STATE 2\n");
 
 		for (n = 0; n < (RTL_READ_COUNT / 2) / FFT_SIZE; ++n) {
@@ -926,14 +931,18 @@ do_cal_thr_func(void* arg) {
 				(abs(last_offset[rcb->rcvr_num] - i) > (int)bin+1))) {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
 			if (mcb.freq_offset[rcb->rcvr_num] != i) {
-				printf("%s: calibration update, rcvr %d old offset %d new offset %d\n",
-					time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num], i);
+				printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d\n",
+					time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
+						i, rcb->curr_freq + i);
 				mcb.freq_offset[rcb->rcvr_num] = i;
 			}
 			last_offset[rcb->rcvr_num] = i;
+		}
+#if 0
 		} else {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + last_offset[rcb->rcvr_num]);
 		}
+#endif
 
 		//printf("do_cal_thr_func() STATE 3\n");
 		mcb.cal_state = CAL_STATE_3;
