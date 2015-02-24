@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <style type="text/css">
+      html { height: 100% }
+      body { height: 100%; margin: 0; padding: 0 }
+      #map_canvas { height: 100% }
+      #info {
+        position: absolute;
+        width:20%;
+        height:100%;
+        bottom:0px;
+        right:0px;
+        top:0px;
+        background-color: white;
+        border-left:1px #666 solid;
+        font-family:Helvetica;
+      }
+      #info div {
+        padding:0px;
+        padding-left:10px;
+        margin:0px;
+      }
+      #info div h1 {
+        margin-top:10px;
+        font-size:16px;
+      }
+      #info div p {
+        font-size:14px;
+        color:#333;
+      }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js">
+    </script>
+    <script type="text/javascript"
+      src="https://maps.googleapis.com/maps/api/js?sensor=true">
+    </script>
+    <script type="text/javascript">
+      Map=null;
+      CenterLat=30.0;
+      CenterLon=-112.0;
+      Callsigns={};
+      data={};
+      NumCallsigns = 0;
+      Selected=null
+
+      function getIconForCallsign(callsign) {
+          var r = 255, g = 255, b = 0;
+          
+          return {
+//              strokeWeight: (selected ? 2 : 1),
+              strokeWeight: 2,
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 3,
+              fillColor: 'rgb('+r+','+g+','+b+')',
+              fillOpacity: 0.9,
+          };
+      }
+      
+      function selectCallsign() {
+          if (!Callsigns[this.callsign]) return;
+          var old = Selected;
+          Selected = this.callsign;
+          if (Callsigns[old]) {
+              /* Remove the highlight in the previously selected spot. */
+              Callsigns[old].marker.setIcon(getIconForCallsign(Callsigns[old]));
+          }
+          Callsigns[Selected].marker.setIcon(getIconForCallsign(Callsigns[Selected]));
+          refreshSelectedInfo();
+      }
+      
+      function refreshGeneralInfo() {
+          var i = document.getElementById('geninfo');
+          
+          i.innerHTML = NumCallsigns+' spots on screen.';
+      }
+      
+      function refreshSelectedInfo() {
+          var i = document.getElementById('selinfo');
+          var p = Callsigns[Selected];
+          
+          html += 'Coordinates: '+p.lat+', '+p.lon+'<br>';
+          i.innerHTML = html;
+      }
+      
+      function processData(allText) {
+          var allTextLines = allText.split(/\r\n|\n/);
+          var headers = allTextLines[0].split(',');
+          var lines = [];
+
+          NumCallsigns = allTextLines.length - 1;
+
+          for (var i=0; i<allTextLines.length; i++) {
+
+              var data = allTextLines[i].split(',');
+              
+              var callsign = data[0];
+              var lat = data[1];
+              var lon = data[2];
+              var marker = Callsigns;
+              var icon = null;
+
+              var newpos = new google.maps.LatLng(lat, lon);
+                  
+//              marker.setPosition(newpos);
+//              marker.setIcon(getIconForCallsign(callsign));
+
+
+
+//              if (callsign == Selected) {
+//                  refreshSelectedInfo();
+//                  
+//              } else {
+
+              marker = new google.maps.Marker({
+                  position: new google.maps.LatLng(lat, lon),
+                  map: Map,
+                  icon: getIconForCallsign(callsign)
+              });
+
+//              callsign.marker = marker;
+//              marker.callsign = callsign;
+//              Callsigns[callsign] = callsign;
+                  
+              /* Trap clicks for this marker. */
+              google.maps.event.addListener(marker, 'click', selectCallsign);
+          }
+          
+          // alert(lines);
+      }
+      
+      
+      function fetchData() {
+          $(document).ready(function() {
+              $.ajax({
+                  type: "GET",
+                  url: "http://localhost:8000/data.csv",
+                  dataType: "text",
+                  success: function(data) {processData(data);}
+              });
+          });
+      };
+      
+      function initialize() {
+          var mapOptions = {
+              center: new google.maps.LatLng(CenterLat, CenterLon),
+              zoom: 5,
+              mapTypeId: google.maps.MapTypeId.ROADMAP
+          };
+          Map = new google.maps.Map(document.getElementById("map_canvas"), mapOptions);
+          
+          /* Setup our timer to poll from the server. */
+          window.setInterval(function() {
+              fetchData();
+              refreshGeneralInfo();
+          }, 15000);
+      }
+      
+    </script>
+  </head>
+  <body onload="initialize()">
+    <div id="map_canvas" style="width:80%; height:100%"></div>
+    <div id="info">
+      <div>
+        <h1>LAST SPOTS</h1>
+        <p id="geninfo"></p>
+        <p id="selinfo">Click on a spot for info.</p>
+      </div>
+    </div>
+  </body>
+</html>

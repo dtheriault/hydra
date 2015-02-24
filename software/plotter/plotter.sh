@@ -2,6 +2,9 @@
 
 
 SPOTS_PATH=~/skimsvr/Spots.txt
+CACHE_FILE=Cache.txt
+SPOTS_FILE=lastSpots.txt
+TMP_FILE=$(mktemp /tmp/callsign.XXXXXXXX)
 
 # Some Globals
 lat=
@@ -13,6 +16,20 @@ myCall=
 myPass=
 status=0
 
+# trap ctrl-c and call ctrl_c()
+trap ctrl_c INT
+
+function ctrl_c() {
+    echo "** User Requesting Exit..."
+    # Cleanup processes
+    kill $TAIL_PID
+    kill $SERVER_PID
+    kill $POLLER_PID
+    # Clean up temp files
+    rm -f ${TMP_FILE}
+    rm -f ${SPOTS_FILE}
+    exit 1
+}
 
 # Functions
 #
@@ -27,9 +44,16 @@ function check_cache()
 {
     echo -n "$(timestamp): Checking Cache for:" $1 "  "
 
-    grep $1 Cache.txt
+    # perform exact string match
+    grep -w "$1" ${CACHE_FILE} > ${TMP_FILE}
 
-    return $?
+    if [ $? -eq 0 ]; then
+        cat ${TMP_FILE} >> ${SPOTS_FILE}
+        cat ${TMP_FILE}
+        return 0
+    fi
+
+    return 1
 }
 
 # Adds new callsign,lat,long entry into cache, csv format
@@ -37,7 +61,7 @@ function check_cache()
 function update_cache () 
 {
     echo "$(timestamp): Adding to cache: " $1, $2, $3
-    echo $1,$2,$3 >> Cache.txt
+    echo $1,$2,$3 >> ${CACHE_FILE}
 }
 
 # Queries QRZ.com for a callsign and parses the output looking for
@@ -45,7 +69,7 @@ function update_cache ()
 #
 function query_qrz () 
 {
-    curl "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" 2>1 /dev/null > QUERY
+    curl "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" 2>1 /dev/null > ${QUERY}
 
     lat=`cat ./QUERY | grep "<lat>" | sed 's/<lat>//' | sed 's/<\/lat>//'`
     lon=`cat ./QUERY | grep "<lon>" | sed 's/<lon>//' | sed 's/<\/lon>//'`
@@ -63,7 +87,7 @@ function query_qrz ()
 #
 function login_qrz ()
 {
-    key=`curl "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" 2>1 /dev/null | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
+    key=`curl "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" 2>&1 /dev/null | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
 
     echo "$(timestamp): Logging into QRZ.com: " ${key}
 }
@@ -101,9 +125,15 @@ fi
 if [ -z "$3" ]; then
     echo "Using default path to Spots.txt: " ${SPOTS_PATH}
 else
-    ${SPOTS_PATH}=$3
+    SPOTS_PATH=$3
 fi
 
+if [ -z "$4" ]; then
+    echo "Using default of 100 spots to track"
+    NUM_SPOTS=100
+else
+    NUM_SPOTS=$4
+fi
 
 # Login to QRZ.com
 #
@@ -111,9 +141,27 @@ login_qrz ${myCall} ${myPass}
 
 # TODO:  Error check login return
 
+
+# Start Map HTTP Server
+python -m SimpleHTTPServer &
+SERVER_PID=$!
+if [ ${SERVER_PID} -ne 0 ]; then
+    echo "Started Server at: "${SERVER_PID}
+fi
+
+# Start Cache poller for map data
+./poller.sh ${NUM_SPOTS} &
+POLLER_PID=$!
+if [ ${POLLER_PID} -ne 0 ]; then
+    echo "Started Poller at: "${POLLER_PID}
+fi
+
 # Spawn off tail -f process of Skimmer Spots
 coproc TAIL { tail -f ${SPOTS_PATH} ;}
 TAIL_PID=$!
+if [ ${TAIL_PID} -ne 0 ]; then
+    echo "Started Listener: "${TAIL_PID}
+fi
 
 #
 # Main loop, reads callsigns from spots, performs lookups and
@@ -136,17 +184,24 @@ while read line; do
 	    lon=0
 	    continue;
 	fi
+
 	## query success, update our cache
 	update_cache ${call} ${lat} ${lon}
-    else
-	echo
-	continue
+
+        ## update running datafile
+        echo "${call},${lat},${lon}" >> ${SPOTS_FILE}
+
+        ## throttle so QRZ doesn't get swamped
+        sleep 3
     fi
     echo
 
-    ## throttle so QRZ doesn't get swamped
-    sleep 3
 done <&${TAIL[0]}
-kill $TAIL_PID
 
+# Cleanup processes
+kill $TAIL_PID
+kill $SERVER_PID
+kill $POLLER_PID
+
+# We're outa here
 exit 0
