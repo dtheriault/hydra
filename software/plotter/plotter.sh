@@ -5,6 +5,7 @@ SPOTS_PATH=~/skimsvr/Spots.txt
 CACHE_FILE=Cache.txt
 SPOTS_FILE=lastSpots.txt
 TMP_FILE=$(mktemp /tmp/callsign.XXXXXXXX)
+QUERY=./QUERY
 
 # Some Globals
 lat=
@@ -28,6 +29,8 @@ function ctrl_c() {
     # Clean up temp files
     rm -f ${TMP_FILE}
     rm -f ${SPOTS_FILE}
+    rm -f ${QUERY}
+
     exit 1
 }
 
@@ -69,10 +72,10 @@ function update_cache ()
 #
 function query_qrz () 
 {
-    curl "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" 2>1 /dev/null > ${QUERY}
+    curl "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" &> /dev/null > ${QUERY}
 
-    lat=`cat ./QUERY | grep "<lat>" | sed 's/<lat>//' | sed 's/<\/lat>//'`
-    lon=`cat ./QUERY | grep "<lon>" | sed 's/<lon>//' | sed 's/<\/lon>//'`
+    lat=`cat ${QUERY} | grep "<lat>" | sed 's/<lat>//' | sed 's/<\/lat>//'`
+    lon=`cat ${QUERY} | grep "<lon>" | sed 's/<lon>//' | sed 's/<\/lon>//'`
 
     echo "$(timestamp): QRZ Returns: "${call}, ${lat}, ${lon} 
 
@@ -87,7 +90,7 @@ function query_qrz ()
 #
 function login_qrz ()
 {
-    key=`curl "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" 2>&1 /dev/null | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
+    key=`curl "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" &> /dev/null | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
 
     echo "$(timestamp): Logging into QRZ.com: " ${key}
 }
@@ -141,9 +144,8 @@ login_qrz ${myCall} ${myPass}
 
 # TODO:  Error check login return
 
-
 # Start Map HTTP Server
-python -m SimpleHTTPServer &
+python -m SimpleHTTPServer &> /dev/null &
 SERVER_PID=$!
 if [ ${SERVER_PID} -ne 0 ]; then
     echo "Started Server at: "${SERVER_PID}
