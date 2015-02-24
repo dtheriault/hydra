@@ -1,0 +1,52 @@
+CW Skimmer Google Map Plotter
+-----------------------------
+
+I wanted way to plot all callsigns on a google map, similar to the
+way RBN plots them.  Unfortunately for RBN it only allows plotting of
+calls calling CQ.  I wanted all calls since many DX were answering and
+not calling CQ but were being decoded.  The map gives me a quick way
+to view my reception propagation.
+
+History:
+--------
+
+The idea was leveraged from the dump1090 release off github.  
+
+    https://github.com/antirez/dump1090.git
+
+Dump1090 was written by Salvatore Sanfilippo antirez@gmail.com and 
+is released under the BSD three clause license. 
+
+Basically just leveraged the gmap.html file.
+
+
+Usage:
+------
+
+./plotter.sh <QRZ Login> <QRZ Password> <Path to Skimmer Spots.txt> [<# calls to list>]
+
+By default, will list 100 calls.  
+
+*** Note ***
+
+Currently you need a QRZ.com login to utilize this plotter since it performs 
+DB queries via XML.  You should be able to run w/o subscription, but ideally
+I'd track the failed login and not perform future queries and just rely on
+hits in the cache file.  That's the idea for the cache, to reduce queries to
+QRZ.com.  The cache represents CW users, so we really don't need the full
+QRZ.com DB.
+
+To exit, just ^C and should kill the three processes and remove tmp files.
+
+
+To access the map:
+------------------
+
+http://localhost:8000/gmap.html
+
+
+
+
+Let me know if you have troubles.
+
+-dt-
