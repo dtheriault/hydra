@@ -16,6 +16,8 @@ data=
 myCall=
 myPass=
 status=0
+LoginOk=0
+Error=0
 
 # trap ctrl-c and call ctrl_c()
 trap ctrl_c INT
@@ -63,36 +65,97 @@ function check_cache()
 #
 function update_cache () 
 {
-    echo "$(timestamp): Adding to cache: " $1, $2, $3
-    echo $1,$2,$3 >> ${CACHE_FILE}
+    if [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
+        echo "ERROR: Attempting to update cache with incomplete entry"
+    else
+        echo "$(timestamp): Adding to cache: " $1, $2, $3
+        echo $1,$2,$3 >> ${CACHE_FILE}
+    fi
 }
 
 # Queries QRZ.com for a callsign and parses the output looking for
 # lat/long data.  THis is then added to our cache
 #
-function query_qrz () 
+function perform_query()
 {
-    curl "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" &> /dev/null > ${QUERY}
+    curl -s "https://xmldata.qrz.com/xml/current/?s=${key};callsign=${call}" > ${QUERY}
 
+    Error=
     lat=`cat ${QUERY} | grep "<lat>" | sed 's/<lat>//' | sed 's/<\/lat>//'`
     lon=`cat ${QUERY} | grep "<lon>" | sed 's/<lon>//' | sed 's/<\/lon>//'`
+    Error=`cat ${QUERY} | grep Error | sed 's/<Error>//' | sed 's/<\/Error>//'`
+}
 
-    echo "$(timestamp): QRZ Returns: "${call}, ${lat}, ${lon} 
+function query_qrz () 
+{
+    # perform the actual query
+    perform_query 
+
+    # Check if query returned error
+    if [ -n "${Error}" ]; then
+
+        cp ${QUERY} DEBUG
+
+        echo >> DEBUG
+        echo ${Error} >> DEBUG
+
+        # see if we got session timeout error
+        if [ "${Error}" == "Session timeout" ]; then
+
+            # if so, try and log in again 
+            login_qrz ${myCall} ${myPass}
+
+            # Check for successful re-login
+            if [ ${LoginOk} -eq 1 ]; then
+
+                # re-submit callsign for lookup
+                perform_query
+
+                # Check if query returned error
+                if [ -n "${Error}" ]; then
+
+                    # Display error message
+                    echo "$(timestamp): QRZ Returns: "${Error}
+
+                    # We got two errors, somethings wrong
+                    return 1
+                fi
+            else
+                echo "$(timestamp): Session timeout, Unable to logon "${Error}
+            fi
+        else
+            echo "$(timestamp): QRZ Returns: "${Error}
+            return 1
+        fi
+    fi
 
     if [ -z "${lat}" ] || [ -z "${lon}" ]; then
 	return 1
     else
+        echo "$(timestamp): QRZ Returns: "${call}, ${lat}, ${lon} 
 	return 0
     fi
+
+return 0
 }
 
 # Posts a login to QRZ.com and returns session key which is needed for future queries
 #
 function login_qrz ()
 {
-    key=`curl -s "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
+    curl -s "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" > ${QUERY}
+    status=$?
+    key=
+    key=`cat ${QUERY} | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
+    Error=`cat ${QUERY} | grep Key | sed 's/<Error>//' | sed 's/<\/Error>//'`
 
-    echo "$(timestamp): Logging into QRZ.com: " ${key}
+    if [ -z "${key}" ]; then
+        echo "$(timestamp): Cannot Login to QRZ.com: " ${Error}
+        LoginOk=0
+    else
+        echo "$(timestamp): Logged into QRZ.com: " ${key}
+        LoginOk=1
+    fi
 }
 
 # Simple usage summary
@@ -100,7 +163,7 @@ function login_qrz ()
 function usage ()
 {
     echo
-    echo "Usage:  ./plotter.sh  <QRZ_Login_Name> <QRZ_Password> [Path to CW Skimmer Spots.txt]"
+    echo "Usage:  ./plotter.sh  <QRZ_Login_Name> <QRZ_Password> <Path to CW Skimmer Spots.txt> <#Spots>"
     echo
 }
 
@@ -177,21 +240,27 @@ while read line; do
     check_cache ${call};
     if [ $? -ne 0 ]; then
 	echo "  Miss"
-	query_qrz ${call}
-	if [ $? -ne 0 ]; then
-	    ## query bad, no luck
-	    echo "$(timestamp): Bad Callsign or DB entry" ${call}
-	    echo
-	    lat=0
-	    lon=0
-	    continue;
-	fi
+        if [ ${LoginOk} -eq 1 ]; then
 
-	## query success, update our cache
-	update_cache ${call} ${lat} ${lon}
+            # Lookup at QRZ.com, callsign for lat/long data
+	    query_qrz ${call}
 
-        ## update running datafile
-        echo "${call},${lat},${lon}" >> ${SPOTS_FILE}
+            # If we've got an error
+	    if [ $? -ne 0 ]; then
+	        ## query bad, no luck
+	        echo
+	        lat=0
+	        lon=0
+                cp ${QUERY} LAST_ERROR
+	        continue;
+	    fi
+
+	    ## query success, update our cache
+	    update_cache ${call} ${lat} ${lon}
+
+            ## update running datafile
+            echo "${call},${lat},${lon}" >> ${SPOTS_FILE}
+        fi
 
         ## throttle so QRZ doesn't get swamped
         sleep 3
