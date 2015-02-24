@@ -986,7 +986,7 @@ do_cal_thr_func(void* arg) {
 
 			mcb.freq_offset[rcb->rcvr_num] = i;
 		} else {
-#if 1
+#if 0
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
 					i, rcb->curr_freq + i, flip_offset[1][rcb->rcvr_num]);
