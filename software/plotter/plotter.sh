@@ -90,7 +90,7 @@ function query_qrz ()
 #
 function login_qrz ()
 {
-    key=`curl "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" &> /dev/null | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
+    key=`curl -s "https://xmldata.qrz.com/xml/current/?username=${myCall};password=${myPass}" | grep Key | sed 's/<Key>//' | sed 's/<\/Key>//'`
 
     echo "$(timestamp): Logging into QRZ.com: " ${key}
 }
