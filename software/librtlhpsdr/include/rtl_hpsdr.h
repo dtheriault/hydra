@@ -74,6 +74,7 @@
 #define IQ_FRAME_DATA_LEN 63
 #define MAXSTR 128
 #define FFT_SIZE 65536
+#define CAL_STATE_0 -1
 #define CAL_STATE_1 -2
 #define CAL_STATE_2 -3
 #define CAL_STATE_3 -4
@@ -98,19 +99,19 @@ struct main_cb {
 	int freq_offset[MAX_RCVRS + 1];
 	int rcvr_order[MAX_RCVRS + 1];
 	int signal_multiplier;
-	int do_cal;
+	int cal_state;
 	int calibrate;
 
 	struct timeb freq_ltime[MAX_RCVRS];
 	struct timeb freq_ttime[MAX_RCVRS];
 
-	struct rcvr_cb {
-		fftw_complex fftIn[sizeof(fftw_complex) * FFT_SIZE];
-		fftw_complex fftOut[sizeof(fftw_complex) * FFT_SIZE];
-		fftw_plan fftPlan;
-		float fft_averaged[FFT_SIZE * sizeof(float)];
-		float dest[4] __attribute__((aligned(16)));
+	fftw_complex fftIn[sizeof(fftw_complex) * FFT_SIZE];
+	fftw_complex fftOut[sizeof(fftw_complex) * FFT_SIZE];
+	fftw_plan fftPlan;
+	float fft_averaged[FFT_SIZE * sizeof(float)];
 
+	struct rcvr_cb {
+		float dest[4] __attribute__((aligned(16)));
 		int rcvr_num;
 		int new_freq;
 		int curr_freq;
@@ -137,6 +138,7 @@ void load_packet(struct rcvr_cb* rcb);
 void rtl_sighandler(int signum);
 int get_addr(int sock);
 void hpsdrsim_reveal(void);
+int parse_config(char* conf_file);
 
 pthread_t hpsdrsim_thread_id;
 void* hpsdrsim_thread(void* arg);
