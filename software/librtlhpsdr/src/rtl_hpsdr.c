@@ -875,7 +875,7 @@ do_cal_thr_func(void* arg) {
 	float var = 3000.0f; // freq in hz from the calibration freq we care about
 	float magnitude, last, current;
 	float bin = (float)RTL_SAMPLE_RATE / FFT_SIZE;
-	static int max_offset = 3000;
+	static int min_offset = 0, max_offset = 3000;
 	static u_int first_pass = 1, first_pass_mask = 0;
 	static int flip_offset[2][MAX_RCVRS];
 	static int flip[MAX_RCVRS] = {0}, no_signal = 0;
@@ -895,14 +895,14 @@ do_cal_thr_func(void* arg) {
 
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
-#if 0
+#if 1
 		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
 			i = mcb.up_xtal + mcb.calibrate;
-			tsleep = 5000;
+			tsleep = 50000;
 			//tsleep = 0;
 		} else {
 			i = mcb.calibrate;
-			tsleep = 5000;
+			tsleep = 50000;
 			//tsleep = 0;
 		}
 		// give some time for the dongle to lock in
@@ -970,11 +970,11 @@ do_cal_thr_func(void* arg) {
 
 		// only update offset if it's been established and we're not changing it drastically
 		// also avoid flipping back and forth to a previous state
-		if (i && n && (n < max_offset) && (i != flip_offset[1][rcb->rcvr_num])) {
+		if (i && n && (n < max_offset) && (n > (int)bin) && (i != flip_offset[1][rcb->rcvr_num])) {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
-			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d\n",
+			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d bin %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
-					i, rcb->curr_freq + i);
+					i, rcb->curr_freq + i, (int)bin);
 
 			if (2 == flip[rcb->rcvr_num]) {
 				flip_offset[0][rcb->rcvr_num] = flip_offset[1][rcb->rcvr_num];
@@ -986,7 +986,7 @@ do_cal_thr_func(void* arg) {
 
 			mcb.freq_offset[rcb->rcvr_num] = i;
 		} else {
-#if 0
+#if 1
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
 					i, rcb->curr_freq + i, flip_offset[1][rcb->rcvr_num]);
@@ -1002,6 +1002,7 @@ do_cal_thr_func(void* arg) {
 			if (first_pass_mask == mcb.rcvrs_mask) {
 				first_pass = 0;
 				max_offset = 200;
+				min_offset = (int)bin;
 			}
 		}
 	}
