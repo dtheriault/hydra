@@ -99,6 +99,7 @@ target_link_libraries(rtl_tcp rtlsdr_shared convenience_static
 target_link_libraries(rtl_hpsdr rtlsdr_shared convenience_static
     ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
+    ${FFTW3_LIBRARIES}
 )
 target_link_libraries(rtl_test rtlsdr_shared convenience_static
     ${LIBUSB_LIBRARIES}
