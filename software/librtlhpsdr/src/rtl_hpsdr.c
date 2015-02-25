@@ -970,7 +970,8 @@ do_cal_thr_func(void* arg) {
 
 		// only update offset if it's been established and we're not changing it drastically
 		// also avoid flipping back and forth to a previous state
-		if (i && n && (n < max_offset) && (n > (int)bin) && (i != flip_offset[1][rcb->rcvr_num])) {
+		if (i && (n < max_offset) && (n > (int)bin) && (i != flip_offset[1][rcb->rcvr_num])
+				&& (i != flip_offset[0][rcb->rcvr_num])) {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
 			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d bin %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
@@ -985,6 +986,16 @@ do_cal_thr_func(void* arg) {
 			}
 
 			mcb.freq_offset[rcb->rcvr_num] = i;
+
+			// after first pass cut back on the allowable offset
+			if (first_pass) {
+				first_pass_mask |= 1 << rcb->rcvr_num;
+				if (first_pass_mask == mcb.rcvrs_mask) {
+					first_pass = 0;
+					max_offset = 200;
+					min_offset = (int)bin;
+				}
+			}
 		} else {
 #if 0
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
@@ -995,16 +1006,6 @@ do_cal_thr_func(void* arg) {
 
 		mcb.cal_state = CAL_STATE_3;
 		//printf("do_cal_thr_func() STATE 3 rcvr_num: %d\n", rcb->rcvr_num);
-
-		// after first pass cut back on the allowable offset
-		if (first_pass) {
-			first_pass_mask |= 1 << rcb->rcvr_num;
-			if (first_pass_mask == mcb.rcvrs_mask) {
-				first_pass = 0;
-				max_offset = 200;
-				min_offset = (int)bin;
-			}
-		}
 	}
 	pthread_exit(NULL);
 	//printf("EXITING do_cal_thr_func()\n");
