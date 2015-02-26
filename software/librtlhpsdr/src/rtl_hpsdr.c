@@ -812,6 +812,16 @@ hpsdrsim_watchdog_thread(void* arg) {
 				printf("config_file changed, reloading...\n");
 				parse_config(conf_file);
 				reset_cal = 1;
+				printf("New settings:\n");
+				printf("  ip address:\t\t%s\n", mcb.ip_addr);
+				printf("  number of rcvrs:\t%d\n", mcb.total_num_rcvrs);
+				printf("  signal multiplier\t%d\n", mcb.signal_multiplier);
+				if (mcb.calibrate) printf("  calibration freq:\t%d hz\n", mcb.calibrate);
+				if (mcb.up_xtal) printf("  up_xtal freq:\t\t%d hz\n", mcb.up_xtal);
+				printf("\nfreq_offset ");
+				for(i = 0; i < mcb.total_num_rcvrs; i++)
+					printf("%d%s", mcb.freq_offset[i],
+						(mcb.total_num_rcvrs - 1 != i) ? "," : "\n\n");
 			}
 		}
 	}
@@ -890,6 +900,7 @@ do_cal_thr_func(void* arg) {
 			reset_cal = 0;
 			first_pass = 1;
 			first_pass_mask = 0;
+			no_signal = 0;
 			max_offset = 3000;
 			memset(flip_offset, 0, sizeof(flip_offset));
 			memset(flip, 0, sizeof(flip));
@@ -907,8 +918,8 @@ do_cal_thr_func(void* arg) {
 
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
-#if 1
-		tsleep = 25000 + (mcb.up_xtal / 2000);
+#if 0
+		tsleep = 5000 + (mcb.calibrate / 2000);
 		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
 			i = mcb.up_xtal + mcb.calibrate;
 		} else {
@@ -1006,7 +1017,7 @@ do_cal_thr_func(void* arg) {
 			}
 
 		} else {
-#if 0
+#if 1
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
 					i, rcb->curr_freq + i, flip_offset[1][rcb->rcvr_num]);
@@ -1066,19 +1077,19 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 				pthread_mutex_unlock(&iqready_lock);
 //RRK just pass buf?
 				//memcpy(fft_buf, buf, RTL_READ_COUNT);
+				//printf("rtlsdr_callback() STATE 2 cmask %x\n", cal_rcvr_mask);
 				fft_buf = buf;
 				pthread_mutex_lock(&do_cal_lock);
 				mcb.cal_state = CAL_STATE_2;
 				pthread_cond_broadcast(&do_cal_cond);
 				pthread_mutex_unlock(&do_cal_lock);
-				//printf("rtlsdr_callback() STATE 2 cmask %x\n", cal_rcvr_mask);
 				return;
 			}
 			else if (mcb.cal_state == CAL_STATE_3) {
+				//printf("rtlsdr_callback() STATE 3 cmask %x\n", cal_rcvr_mask);
 				mcb.cal_state = CAL_STATE_0;
 				cal_rcvr = -1;
 				cal_count[rcb->rcvr_num] = 0;
-				//printf("rtlsdr_callback() STATE 3 cmask %x\n", cal_rcvr_mask);
 			}
 		}
 	}
