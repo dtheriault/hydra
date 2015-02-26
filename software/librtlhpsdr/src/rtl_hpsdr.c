@@ -18,6 +18,7 @@
  */
 
 #include "rtl_hpsdr.h"
+#include "version.h"
 #include <sched.h>
 #include <unistd.h>
 #include <sys/stat.h>
@@ -1445,7 +1446,8 @@ main(int argc, char* argv[]) {
 			break;
 
 		case 'v':
-			printf("\nGNU %s version %s\n", progname, PRG_VERSION);
+			printf("\nGNU %s Version %s Date Built %s %s\n", progname, PRG_VERSION, __TIME__, __DATE__);
+			printf("GIT Hash %s\n", GITVERSION);
 			printf("Copyright (C) 2014 Free Software Foundation, Inc.\n"
 			       "License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>\n"
 			       "This is free software: you are free to change and redistribute it.\n"
