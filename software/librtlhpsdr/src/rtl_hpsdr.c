@@ -763,9 +763,9 @@ hpsdrsim_stop_threads() {
 	mcb.cal_state = CAL_STATE_0;
 	if (mcb.calibrate) {
 		printf("\nfreq_offset ");
-		for(i = 0; i < mcb.total_num_rcvrs; i++)
+		for(i = 0; i < mcb.active_num_rcvrs; i++)
 			printf("%d%s", mcb.freq_offset[i],
-				(mcb.total_num_rcvrs - 1 != i) ? "," : "\n\n");
+				(mcb.active_num_rcvrs - 1 != i) ? "," : "\n\n");
 	}
 }
 
@@ -820,9 +820,12 @@ hpsdrsim_watchdog_thread(void* arg) {
 				if (mcb.calibrate) printf("  calibration freq:\t%d hz\n", mcb.calibrate);
 				if (mcb.up_xtal) printf("  up_xtal freq:\t\t%d hz\n", mcb.up_xtal);
 				printf("\nfreq_offset ");
-				for(i = 0; i < mcb.total_num_rcvrs; i++)
+				for(i = 0; i < mcb.active_num_rcvrs; i++) {
 					printf("%d%s", mcb.freq_offset[i],
-						(mcb.total_num_rcvrs - 1 != i) ? "," : "\n\n");
+						(mcb.active_num_rcvrs - 1 != i) ? "," : "\n\n");
+					//this should trigger a retune on each active dongle
+					mcb.rcb[i].new_freq = mcb.rcb[i].curr_freq;
+				}
 			}
 		}
 	}
