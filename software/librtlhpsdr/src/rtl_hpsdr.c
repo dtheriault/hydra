@@ -95,6 +95,7 @@ static u_int pc_sequence;
 static float rtl_lut[4][256];
 //static u_char fft_buf[RTL_READ_COUNT];
 static u_char *fft_buf;
+static int reset_cal = 0;
 
 void
 rtl_sighandler(int signum) {
@@ -562,10 +563,10 @@ hpsdrsim_thread(void* arg) {
 							i = mcb.rcb[j].new_freq + mcb.up_xtal + mcb.freq_offset[j];
 							i = rtlsdr_set_center_freq(mcb.rcb[j].rtldev, i);
 							if(i < 0) {
-								printf("WARNING: Failed to set rcvr %d to freq %d with offset %d\n",
+								printf("WARNING: Failed to set rcvr %d to freq %d with offset %+d\n",
 									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
 							} else {
-								printf("Set rcvr %d to freq %d with offset %d\n",
+								printf("Set rcvr %d to freq %d with offset %+d\n",
 									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
 							}
 							mcb.rcb[j].curr_freq = mcb.rcb[j].new_freq;
@@ -763,7 +764,7 @@ hpsdrsim_stop_threads() {
 		printf("\nfreq_offset ");
 		for(i = 0; i < mcb.total_num_rcvrs; i++)
 			printf("%d%s", mcb.freq_offset[i],
-				(mcb.total_num_rcvrs - 1 != i) ? ", " : "\n\n");
+				(mcb.total_num_rcvrs - 1 != i) ? "," : "\n\n");
 	}
 }
 
@@ -810,6 +811,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 				last_time = sb.st_mtime;
 				printf("config_file changed, reloading...\n");
 				parse_config(conf_file);
+				reset_cal = 1;
 			}
 		}
 	}
@@ -861,7 +863,7 @@ OUT_ERR:
 		printf("\nfreq_offset ");
 		for(i = 0; i < mcb.total_num_rcvrs; i++)
 			printf("%d%s", mcb.freq_offset[i],
-				(mcb.total_num_rcvrs - 1 != i) ? ", " : "\n\n");
+				(mcb.total_num_rcvrs - 1 != i) ? "," : "\n\n");
 	}
 
 	//printf("EXITING hpsdrsim_watchdog_thread\n");
@@ -875,7 +877,7 @@ do_cal_thr_func(void* arg) {
 	float var = 3000.0f; // freq in hz from the calibration freq we care about
 	float magnitude, last, current;
 	float bin = (float)RTL_SAMPLE_RATE / FFT_SIZE;
-	static int min_offset = 0, max_offset = 3000;
+	static int max_offset = 3000;
 	static u_int first_pass = 1, first_pass_mask = 0;
 	static int flip_offset[2][MAX_RCVRS];
 	static int flip[MAX_RCVRS] = {0}, no_signal = 0;
@@ -883,6 +885,16 @@ do_cal_thr_func(void* arg) {
 	//printf("ENTERING do_cal_thr_func()\n");
 
 	while(!do_exit) {
+		// we may do this if we re-parse the config file
+		if (reset_cal) {
+			reset_cal = 0;
+			first_pass = 1;
+			first_pass_mask = 0;
+			max_offset = 3000;
+			memset(flip_offset, 0, sizeof(flip_offset));
+			memset(flip, 0, sizeof(flip));
+		}
+
 		pthread_mutex_lock(&do_cal_lock);
 		while(mcb.cal_state < 0) {
 			pthread_cond_wait(&do_cal_cond, &do_cal_lock);
@@ -896,14 +908,11 @@ do_cal_thr_func(void* arg) {
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
 #if 1
+		tsleep = 25000 + (mcb.up_xtal / 2000);
 		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
 			i = mcb.up_xtal + mcb.calibrate;
-			tsleep = 50000;
-			//tsleep = 0;
 		} else {
 			i = mcb.calibrate;
-			tsleep = 50000;
-			//tsleep = 0;
 		}
 		// give some time for the dongle to lock in
 		rtlsdr_set_center_freq(rcb->rtldev, i);
@@ -973,9 +982,9 @@ do_cal_thr_func(void* arg) {
 		if (i && (n < max_offset) && (n > (int)bin) && (i != flip_offset[1][rcb->rcvr_num])
 				&& (i != flip_offset[0][rcb->rcvr_num])) {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
-			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d bin %d\n",
+			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
-					i, rcb->curr_freq + i, (int)bin);
+					i, rcb->curr_freq + i);
 
 			if (2 == flip[rcb->rcvr_num]) {
 				flip_offset[0][rcb->rcvr_num] = flip_offset[1][rcb->rcvr_num];
@@ -993,9 +1002,9 @@ do_cal_thr_func(void* arg) {
 				if (first_pass_mask == mcb.rcvrs_mask) {
 					first_pass = 0;
 					max_offset = 200;
-					min_offset = (int)bin;
 				}
 			}
+
 		} else {
 #if 0
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
