@@ -500,6 +500,7 @@ hpsdrsim_thread(void* arg) {
 	int i = 0, j = 0;
 	int rc, offset;
 	int freq, num_rcvrs, xtra;
+	static int per_rcvr = 0;
 	u_char C0_1, C0_2;
 
 	//printf("ENTERING hpsdrsim_thread active rcvrs: %d\n", mcb.active_num_rcvrs);
@@ -515,6 +516,28 @@ hpsdrsim_thread(void* arg) {
 	}
 
 	while(!do_exit) {
+		// Set new frequency if one is pending and enough time has expired
+		if(mcb.rcb[per_rcvr].new_freq) {
+			ftime(&mcb.freq_ttime[per_rcvr]);
+			if((((((mcb.freq_ttime[per_rcvr].time * 1000) + mcb.freq_ttime[per_rcvr].millitm) -
+				(mcb.freq_ltime[per_rcvr].time * 1000) + mcb.freq_ltime[per_rcvr].millitm)) > 200)
+				|| band_change[per_rcvr]) {
+				i = mcb.rcb[per_rcvr].new_freq + mcb.up_xtal + mcb.freq_offset[per_rcvr];
+				i = rtlsdr_set_center_freq(mcb.rcb[per_rcvr].rtldev, i);
+				if(i < 0) {
+					printf("WARNING: Failed to set rcvr %d to freq %d with offset %+d\n",
+						mcb.rcb[per_rcvr].rcvr_num + 1, mcb.rcb[per_rcvr].new_freq, mcb.freq_offset[per_rcvr]);
+				} else {
+					printf("Set rcvr %d to freq %d with offset %+d\n",
+						mcb.rcb[per_rcvr].rcvr_num + 1, mcb.rcb[per_rcvr].new_freq, mcb.freq_offset[per_rcvr]);
+				}
+				mcb.rcb[per_rcvr].curr_freq = mcb.rcb[per_rcvr].new_freq;
+				mcb.rcb[per_rcvr].new_freq = 0;
+				band_change[per_rcvr] = 0;
+			}
+		}
+		if (per_rcvr++ >= mcb.active_num_rcvrs) per_rcvr = 0;
+
 		if(buffer[0] == 0xEF && buffer[1] == 0xFE) {
 			switch(buffer[2]) {
 			case 1:
@@ -552,28 +575,6 @@ hpsdrsim_thread(void* arg) {
 						offset = 512 + xtra;
 						freq = 1;
 						j = (C0_2 - 4) / 2;
-					}
-
-
-					// Set new frequency if one is pending and enough time has expired
-					if(mcb.rcb[j].new_freq) {
-						ftime(&mcb.freq_ttime[j]);
-						if((((((mcb.freq_ttime[j].time * 1000) + mcb.freq_ttime[j].millitm) -
-							(mcb.freq_ltime[j].time * 1000) + mcb.freq_ltime[j].millitm)) > 200)
-							|| band_change[j]) {
-							i = mcb.rcb[j].new_freq + mcb.up_xtal + mcb.freq_offset[j];
-							i = rtlsdr_set_center_freq(mcb.rcb[j].rtldev, i);
-							if(i < 0) {
-								printf("WARNING: Failed to set rcvr %d to freq %d with offset %+d\n",
-									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
-							} else {
-								printf("Set rcvr %d to freq %d with offset %+d\n",
-									mcb.rcb[j].rcvr_num + 1, mcb.rcb[j].new_freq, mcb.freq_offset[j]);
-							}
-							mcb.rcb[j].curr_freq = mcb.rcb[j].new_freq;
-							mcb.rcb[j].new_freq = 0;
-							band_change[j] = 0;
-						}
 					}
 
 					if(freq) {
@@ -814,8 +815,8 @@ hpsdrsim_watchdog_thread(void* arg) {
 				parse_config(conf_file);
 				reset_cal = 1;
 				printf("New settings:\n");
-				printf("  ip address:\t\t%s\n", mcb.ip_addr);
 				printf("  number of rcvrs:\t%d\n", mcb.total_num_rcvrs);
+				printf("  number of active rcvrs:\t%d\n", mcb.active_num_rcvrs);
 				printf("  signal multiplier\t%d\n", mcb.signal_multiplier);
 				if (mcb.calibrate) printf("  calibration freq:\t%d hz\n", mcb.calibrate);
 				if (mcb.up_xtal) printf("  up_xtal freq:\t\t%d hz\n", mcb.up_xtal);
@@ -825,6 +826,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 						(mcb.active_num_rcvrs - 1 != i) ? "," : "\n\n");
 					//this should trigger a retune on each active dongle
 					mcb.rcb[i].new_freq = mcb.rcb[i].curr_freq;
+					band_change[i] = 1;
 				}
 			}
 		}
