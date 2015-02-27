@@ -64,7 +64,6 @@ static int cal_rcvr = -1;
 static int cal_rcvr_mask = 0;
 static int cal_count[MAX_RCVRS] = {0};
 static int last_freq[MAX_RCVRS] = {0};
-static int band_change[MAX_RCVRS] = {0};
 static float dcIlast[MAX_RCVRS] = {0.0f}, dcQlast[MAX_RCVRS] = {0.0f};
 
 static int common_freq = 0;
@@ -488,6 +487,26 @@ hpsdrsim_sendiq_thr_func(void* arg) {
 			       rcb->iqSamples_remaining * 2 * sizeof(float));
 			rcb->iqSample_offset = 0;
 		}
+
+		// Set new frequency if one is pending and enough time has expired
+		if(mcb.rcb[rcb->rcvr_num].new_freq) {
+			ftime(&mcb.freq_ttime[rcb->rcvr_num]);
+			if((((((mcb.freq_ttime[rcb->rcvr_num].time * 1000) + mcb.freq_ttime[rcb->rcvr_num].millitm) -
+				(mcb.freq_ltime[rcb->rcvr_num].time * 1000) + mcb.freq_ltime[rcb->rcvr_num].millitm)) > 200)
+				|| hpsdr_sequence < 1000000) {
+				i = mcb.rcb[rcb->rcvr_num].new_freq + mcb.up_xtal + mcb.freq_offset[rcb->rcvr_num];
+				i = rtlsdr_set_center_freq(mcb.rcb[rcb->rcvr_num].rtldev, i);
+				if(i < 0) {
+					printf("WARNING: Failed to set rcvr %d to freq %d with offset %+d\n",
+						mcb.rcb[rcb->rcvr_num].rcvr_num + 1, mcb.rcb[rcb->rcvr_num].new_freq, mcb.freq_offset[rcb->rcvr_num]);
+				} else {
+					printf("Set rcvr %d to freq %d with offset %+d\n",
+						mcb.rcb[rcb->rcvr_num].rcvr_num + 1, mcb.rcb[rcb->rcvr_num].new_freq, mcb.freq_offset[rcb->rcvr_num]);
+				}
+				mcb.rcb[rcb->rcvr_num].curr_freq = mcb.rcb[rcb->rcvr_num].new_freq;
+				mcb.rcb[rcb->rcvr_num].new_freq = 0;
+			}
+		}
 	}
 
 	pthread_exit(NULL);
@@ -500,7 +519,6 @@ hpsdrsim_thread(void* arg) {
 	int i = 0, j = 0;
 	int rc, offset;
 	int freq, num_rcvrs, xtra;
-	static int per_rcvr = 0;
 	u_char C0_1, C0_2;
 
 	//printf("ENTERING hpsdrsim_thread active rcvrs: %d\n", mcb.active_num_rcvrs);
@@ -516,28 +534,6 @@ hpsdrsim_thread(void* arg) {
 	}
 
 	while(!do_exit) {
-		// Set new frequency if one is pending and enough time has expired
-		if(mcb.rcb[per_rcvr].new_freq) {
-			ftime(&mcb.freq_ttime[per_rcvr]);
-			if((((((mcb.freq_ttime[per_rcvr].time * 1000) + mcb.freq_ttime[per_rcvr].millitm) -
-				(mcb.freq_ltime[per_rcvr].time * 1000) + mcb.freq_ltime[per_rcvr].millitm)) > 200)
-				|| band_change[per_rcvr]) {
-				i = mcb.rcb[per_rcvr].new_freq + mcb.up_xtal + mcb.freq_offset[per_rcvr];
-				i = rtlsdr_set_center_freq(mcb.rcb[per_rcvr].rtldev, i);
-				if(i < 0) {
-					printf("WARNING: Failed to set rcvr %d to freq %d with offset %+d\n",
-						mcb.rcb[per_rcvr].rcvr_num + 1, mcb.rcb[per_rcvr].new_freq, mcb.freq_offset[per_rcvr]);
-				} else {
-					printf("Set rcvr %d to freq %d with offset %+d\n",
-						mcb.rcb[per_rcvr].rcvr_num + 1, mcb.rcb[per_rcvr].new_freq, mcb.freq_offset[per_rcvr]);
-				}
-				mcb.rcb[per_rcvr].curr_freq = mcb.rcb[per_rcvr].new_freq;
-				mcb.rcb[per_rcvr].new_freq = 0;
-				band_change[per_rcvr] = 0;
-			}
-		}
-		if (per_rcvr++ >= mcb.active_num_rcvrs) per_rcvr = 0;
-
 		if(buffer[0] == 0xEF && buffer[1] == 0xFE) {
 			switch(buffer[2]) {
 			case 1:
@@ -590,12 +586,9 @@ hpsdrsim_thread(void* arg) {
 							} else if(j < mcb.total_num_rcvrs) {
 								mcb.rcb[j].new_freq = freq;
 							}
-							if(abs(freq - last_freq[j]) > 1000) //1000 arbitrary
-								band_change[j] = 1;
 							last_freq[j] = freq;
 							ftime(&mcb.freq_ltime[j]);
 						}
-
 					}
 
 					if((C0_1 == 0x00) || (C0_2 == 0x00)) {
@@ -747,6 +740,13 @@ hpsdrsim_stop_threads() {
 	}
 
 	// unblock held mutexes so we can exit
+	pthread_mutex_lock(&do_cal_lock);
+	mcb.cal_state = CAL_STATE_EXIT;
+	pthread_cond_broadcast(&do_cal_cond);
+	pthread_mutex_unlock(&do_cal_lock);
+
+	pthread_cancel(do_cal_thr);
+
 	pthread_mutex_lock(&send_lock);
 	send_flags = mcb.rcvrs_mask;
 	pthread_cond_broadcast(&send_cond);
@@ -757,11 +757,9 @@ hpsdrsim_stop_threads() {
 	pthread_cond_broadcast(&iqready_cond);
 	pthread_mutex_unlock(&iqready_lock);
 
-	pthread_cancel(do_cal_thr);
 	pthread_cancel(watchdog_thread_id);
 	pthread_cancel(hpsdrsim_thread_id);
 
-	mcb.cal_state = CAL_STATE_0;
 	if (mcb.calibrate) {
 		printf("\nfreq_offset ");
 		for(i = 0; i < mcb.active_num_rcvrs; i++)
@@ -781,7 +779,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 	// grab the last modification time on the config file if we're using it
 	if (conf_file[0] != 0) {
 		if (stat(conf_file, &sb) == -1) {
-			perror("stat");
+			perror("stat 1");
 			goto OUT_ERR;
 		}
 		last_time = sb.st_mtime;
@@ -806,7 +804,7 @@ hpsdrsim_watchdog_thread(void* arg) {
 		// check to see if the config file changed
 		if (conf_file[0] != 0) {
 			if (stat(conf_file, &sb) == -1) {
-				perror("stat");
+				perror("stat 2");
 				goto OUT_ERR;
 			}
 			if (last_time != sb.st_mtime) {
@@ -826,7 +824,6 @@ hpsdrsim_watchdog_thread(void* arg) {
 						(mcb.active_num_rcvrs - 1 != i) ? "," : "\n\n");
 					//this should trigger a retune on each active dongle
 					mcb.rcb[i].new_freq = mcb.rcb[i].curr_freq;
-					band_change[i] = 1;
 				}
 			}
 		}
@@ -838,6 +835,11 @@ OUT_ERR:
 	pthread_cancel(hpsdrsim_thread_id);
 
 	// unblock held mutexes so we can restart
+	pthread_mutex_lock(&do_cal_lock);
+	mcb.cal_state = CAL_STATE_EXIT;
+	pthread_cond_broadcast(&do_cal_cond);
+	pthread_mutex_unlock(&do_cal_lock);
+
 	pthread_mutex_lock(&send_lock);
 	send_flags = mcb.rcvrs_mask;
 	pthread_cond_broadcast(&send_cond);
@@ -867,7 +869,6 @@ OUT_ERR:
 	mcb.frame_offset1 = frame_offset1[0];
 	mcb.frame_offset2 = frame_offset2[0];
 
-	mcb.cal_state = CAL_STATE_0;
 	rcvr_flags &= 1;
 	send_flags &= 1;
 	last_num_rcvrs = last_rate = 0;
@@ -893,7 +894,7 @@ do_cal_thr_func(void* arg) {
 	float var = 3000.0f; // freq in hz from the calibration freq we care about
 	float magnitude, last, current;
 	float bin = (float)RTL_SAMPLE_RATE / FFT_SIZE;
-	static int max_offset = 3000;
+	static int min_offset = 0, max_offset = 3000;
 	static u_int first_pass = 1, first_pass_mask = 0;
 	static int flip_offset[2][MAX_RCVRS];
 	static int flip[MAX_RCVRS] = {0}, no_signal = 0;
@@ -907,6 +908,7 @@ do_cal_thr_func(void* arg) {
 			first_pass = 1;
 			first_pass_mask = 0;
 			no_signal = 0;
+			min_offset = 0;
 			max_offset = 3000;
 			memset(flip_offset, 0, sizeof(flip_offset));
 			memset(flip, 0, sizeof(flip));
@@ -996,7 +998,7 @@ do_cal_thr_func(void* arg) {
 
 		// only update offset if it's been established and we're not changing it drastically
 		// also avoid flipping back and forth to a previous state
-		if (i && (n < max_offset) && (n > (int)bin) && (i != flip_offset[1][rcb->rcvr_num])
+		if (i && (n < max_offset) && (n > min_offset) && (i != flip_offset[1][rcb->rcvr_num])
 				&& (i != flip_offset[0][rcb->rcvr_num])) {
 			rtlsdr_set_center_freq(rcb->rtldev, rcb->curr_freq + mcb.up_xtal + i);
 			printf("[%s] cal update, rcvr %d old offset %+5d new offset %+5d new freq %d\n",
@@ -1018,6 +1020,7 @@ do_cal_thr_func(void* arg) {
 				first_pass_mask |= 1 << rcb->rcvr_num;
 				if (first_pass_mask == mcb.rcvrs_mask) {
 					first_pass = 0;
+					min_offset = (int)bin;
 					max_offset = 200;
 				}
 			}
@@ -1058,11 +1061,11 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 	ftime(&test_start_time);
 #endif
 
-	cal_count[rcb->rcvr_num] += 1;
-	if (cal_rcvr_mask == 0) cal_rcvr_mask = mcb.rcvrs_mask;
-
 	// periodically calibrate each dongle if enabled
 	if (mcb.calibrate) {
+		cal_count[rcb->rcvr_num] += 1;
+		if (cal_rcvr_mask == 0) cal_rcvr_mask = mcb.rcvrs_mask;
+
 		if ((cal_rcvr < 0) || (cal_rcvr == rcb->rcvr_num)) {
 			if (mcb.cal_state == CAL_STATE_0) {
 				if ((cal_rcvr_mask & (1 << rcb->rcvr_num)) &&
