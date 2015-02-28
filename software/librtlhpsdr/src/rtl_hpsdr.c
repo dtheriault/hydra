@@ -895,7 +895,7 @@ do_cal_thr_func(void* arg) {
 	static int flip_offset[2][MAX_RCVRS];
 	static int flip[MAX_RCVRS] = {0}, no_signal = 0;
 
-	printf("ENTERING do_cal_thr_func()\n");
+	//printf("ENTERING do_cal_thr_func()\n");
 
 	while(!do_exit && mcb.calibrate) {
 		// we may do this if we re-parse the config file
@@ -924,7 +924,7 @@ do_cal_thr_func(void* arg) {
 
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
-#if 1
+#if 0
 		tsleep = 50000 + (mcb.calibrate / 2000);
 		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
 			i = mcb.up_xtal + mcb.calibrate;
@@ -1025,7 +1025,7 @@ do_cal_thr_func(void* arg) {
 			}
 
 		} else {
-#if 1
+#if 0
 			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip0 %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
 					i, rcb->curr_freq + i, flip_offset[0][rcb->rcvr_num]);
@@ -1160,7 +1160,7 @@ rtl_read_thr_func(void* arg) {
 	//printf("ENTERING rtl_read_thr_func() rcvr %d\n", i+1);
 #if 1
 	r = rtlsdr_read_async(rcb->rtldev, rtlsdr_callback,
-	                      (void*)(&mcb.rcb[i]), 4, RTL_READ_COUNT);
+	                      (void*)(&mcb.rcb[i]), 1, RTL_READ_COUNT);
 #else // simulate an rtl read
 	while(!do_exit || running) {
 		usleep(5000); // approximate
