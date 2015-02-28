@@ -93,9 +93,9 @@ static u_int hpsdr_sequence = 0;
 static u_int pc_sequence;
 
 static float rtl_lut[4][256];
-//static u_char fft_buf[RTL_READ_COUNT];
 static u_char *fft_buf;
 static int reset_cal = 0;
+static int do_cal_time = 5; //seconds between calibration
 
 void
 rtl_sighandler(int signum) {
@@ -740,12 +740,13 @@ hpsdrsim_stop_threads() {
 	}
 
 	// unblock held mutexes so we can exit
+#if 0
 	pthread_mutex_lock(&do_cal_lock);
 	mcb.cal_state = CAL_STATE_EXIT;
 	pthread_cond_broadcast(&do_cal_cond);
 	pthread_mutex_unlock(&do_cal_lock);
-
 	pthread_cancel(do_cal_thr);
+#endif
 
 	pthread_mutex_lock(&send_lock);
 	send_flags = mcb.rcvrs_mask;
@@ -835,11 +836,6 @@ OUT_ERR:
 	pthread_cancel(hpsdrsim_thread_id);
 
 	// unblock held mutexes so we can restart
-	pthread_mutex_lock(&do_cal_lock);
-	mcb.cal_state = CAL_STATE_EXIT;
-	pthread_cond_broadcast(&do_cal_cond);
-	pthread_mutex_unlock(&do_cal_lock);
-
 	pthread_mutex_lock(&send_lock);
 	send_flags = mcb.rcvrs_mask;
 	pthread_cond_broadcast(&send_cond);
@@ -899,12 +895,13 @@ do_cal_thr_func(void* arg) {
 	static int flip_offset[2][MAX_RCVRS];
 	static int flip[MAX_RCVRS] = {0}, no_signal = 0;
 
-	//printf("ENTERING do_cal_thr_func()\n");
+	printf("ENTERING do_cal_thr_func()\n");
 
-	while(!do_exit) {
+	while(!do_exit && mcb.calibrate) {
 		// we may do this if we re-parse the config file
 		if (reset_cal) {
 			reset_cal = 0;
+			do_cal_time = 5;
 			first_pass = 1;
 			first_pass_mask = 0;
 			no_signal = 0;
@@ -919,6 +916,7 @@ do_cal_thr_func(void* arg) {
 			pthread_cond_wait(&do_cal_cond, &do_cal_lock);
 		}
 		pthread_mutex_unlock(&do_cal_lock);
+		if (mcb.cal_state == CAL_STATE_EXIT) goto EXIT_DO_CAL;
 
 		rcb = &mcb.rcb[mcb.cal_state];
 
@@ -926,8 +924,8 @@ do_cal_thr_func(void* arg) {
 
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
-#if 0
-		tsleep = 5000 + (mcb.calibrate / 2000);
+#if 1
+		tsleep = 50000 + (mcb.calibrate / 2000);
 		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
 			i = mcb.up_xtal + mcb.calibrate;
 		} else {
@@ -948,6 +946,7 @@ do_cal_thr_func(void* arg) {
 			pthread_cond_wait(&do_cal_cond, &do_cal_lock);
 		}
 		pthread_mutex_unlock(&do_cal_lock);
+		if (mcb.cal_state == CAL_STATE_EXIT) goto EXIT_DO_CAL;
 
 		// reset to the last calibrated freq to reduce the gap between
 		// capturing actual data, after the dongle frequencies have settled
@@ -1020,29 +1019,30 @@ do_cal_thr_func(void* arg) {
 				first_pass_mask |= 1 << rcb->rcvr_num;
 				if (first_pass_mask == mcb.rcvrs_mask) {
 					first_pass = 0;
-					min_offset = (int)bin;
+					min_offset = ((int)bin)-1;
 					max_offset = 200;
 				}
 			}
 
 		} else {
-#if 0
-			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip %d\n",
+#if 1
+			printf("[%s] NO cal update, rcvr %d old offset %+5d new offset %+5d new freq %d flip0 %d\n",
 				time_stamp(), rcb->rcvr_num+1, mcb.freq_offset[rcb->rcvr_num],
-					i, rcb->curr_freq + i, flip_offset[1][rcb->rcvr_num]);
+					i, rcb->curr_freq + i, flip_offset[0][rcb->rcvr_num]);
 #endif
 		}
 
 		mcb.cal_state = CAL_STATE_3;
 		//printf("do_cal_thr_func() STATE 3 rcvr_num: %d\n", rcb->rcvr_num);
 	}
+EXIT_DO_CAL:
 	pthread_exit(NULL);
 	//printf("EXITING do_cal_thr_func()\n");
 }
 
 void
 rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
-	int i, cal_time = 5; // calibrate every X seconds
+	int i;
 	struct rcvr_cb* rcb = (struct rcvr_cb*) ctx;
 	float dcI, dcQ;
 
@@ -1064,12 +1064,16 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 	// periodically calibrate each dongle if enabled
 	if (mcb.calibrate) {
 		cal_count[rcb->rcvr_num] += 1;
-		if (cal_rcvr_mask == 0) cal_rcvr_mask = mcb.rcvrs_mask;
+		if (cal_rcvr_mask == 0) {
+			cal_rcvr_mask = mcb.rcvrs_mask;
+			// gradually increase cal time to a max of 30 minutes
+			do_cal_time = (do_cal_time >= 1800) ? 1800 : do_cal_time + 1;
+		}
 
 		if ((cal_rcvr < 0) || (cal_rcvr == rcb->rcvr_num)) {
 			if (mcb.cal_state == CAL_STATE_0) {
 				if ((cal_rcvr_mask & (1 << rcb->rcvr_num)) &&
-					(cal_count[rcb->rcvr_num] > (cal_time * 20))) {
+					(cal_count[rcb->rcvr_num] > (do_cal_time * 20))) {
 					cal_rcvr_mask ^= (1 << rcb->rcvr_num);
 					cal_rcvr = rcb->rcvr_num;
 					pthread_mutex_lock(&do_cal_lock);
@@ -1084,9 +1088,9 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 				rcvr_flags |= rcb->rcvr_mask;
 				pthread_cond_broadcast(&iqready_cond);
 				pthread_mutex_unlock(&iqready_lock);
-//RRK just pass buf?
-				//memcpy(fft_buf, buf, RTL_READ_COUNT);
 				//printf("rtlsdr_callback() STATE 2 cmask %x\n", cal_rcvr_mask);
+//RRK just pass buf to save time? seems to work OK
+				//memcpy(fft_buf, buf, RTL_READ_COUNT);
 				fft_buf = buf;
 				pthread_mutex_lock(&do_cal_lock);
 				mcb.cal_state = CAL_STATE_2;

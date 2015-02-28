@@ -74,7 +74,7 @@
 #define IQ_FRAME_DATA_LEN 63
 #define MAXSTR 128
 #define FFT_SIZE 65536
-#define CAL_STATE_EXIT	0
+#define CAL_STATE_EXIT	MAX_RCVRS
 #define CAL_STATE_0	-1
 #define CAL_STATE_1	-2
 #define CAL_STATE_2	-3
