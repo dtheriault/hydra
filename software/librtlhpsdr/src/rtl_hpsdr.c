@@ -101,7 +101,10 @@ void
 rtl_sighandler(int signum) {
 	printf("Signal caught, exiting!\n");
 	do_exit = 1;
-	running = 0;
+	if (running)
+		running = 0;
+	else
+		mcb.calibrate = 0;
 	hpsdrsim_stop_threads();
 #ifdef _WIN32
 	exit(0); // RRK FIXME
@@ -901,7 +904,7 @@ do_cal_thr_func(void* arg) {
 		// we may do this if we re-parse the config file
 		if (reset_cal) {
 			reset_cal = 0;
-			do_cal_time = 5;
+			do_cal_time = 5; // TODO, this needs a mutex
 			first_pass = 1;
 			first_pass_mask = 0;
 			no_signal = 0;
@@ -924,13 +927,13 @@ do_cal_thr_func(void* arg) {
 
 		// this is an attempt to check whether the user wants to calibrate
 		// from the upconvertor xtal frequency or an HF station
-#if 0
-		tsleep = 50000 + (mcb.calibrate / 2000);
-		if (abs(mcb.up_xtal - mcb.calibrate) > var) {
+#if 1
+		if ((mcb.up_xtal) && (mcb.calibrate < 30000000))
 			i = mcb.up_xtal + mcb.calibrate;
-		} else {
+		else
 			i = mcb.calibrate;
-		}
+		tsleep = 10000 + (abs(i - (rcb->curr_freq + mcb.up_xtal)) / 1000);
+
 		// give some time for the dongle to lock in
 		rtlsdr_set_center_freq(rcb->rtldev, i);
 		usleep(tsleep);
@@ -985,6 +988,9 @@ do_cal_thr_func(void* arg) {
 		current = (float)mcb.calibrate + ((n - (FFT_SIZE / 2)) * bin);
 		i = (int)current - mcb.calibrate;
 		//printf("rcvr:%d i:%d n:%d l:%f c:%f o:%d\n", rcb->rcvr_num+1, i, n, last, current, (int)(current - mcb.calibrate));
+		// if cal found a signal consider it a success for this rcvr
+		if (i) cal_rcvr_mask ^= 1 << rcb->rcvr_num;
+
 		no_signal = (((FFT_SIZE / 2) == n) && (current == mcb.calibrate)) ? no_signal + 1 : 0;
 		if (10 == no_signal) {
 			no_signal = 0;
@@ -1064,17 +1070,12 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 	// periodically calibrate each dongle if enabled
 	if (mcb.calibrate) {
 		cal_count[rcb->rcvr_num] += 1;
-		if (cal_rcvr_mask == 0) {
-			cal_rcvr_mask = mcb.rcvrs_mask;
-			// gradually increase cal time to a max of 30 minutes
-			do_cal_time = (do_cal_time >= 1800) ? 1800 : do_cal_time + 1;
-		}
 
 		if ((cal_rcvr < 0) || (cal_rcvr == rcb->rcvr_num)) {
+
 			if (mcb.cal_state == CAL_STATE_0) {
 				if ((cal_rcvr_mask & (1 << rcb->rcvr_num)) &&
 					(cal_count[rcb->rcvr_num] > (do_cal_time * 20))) {
-					cal_rcvr_mask ^= (1 << rcb->rcvr_num);
 					cal_rcvr = rcb->rcvr_num;
 					pthread_mutex_lock(&do_cal_lock);
 					mcb.cal_state = rcb->rcvr_num;
@@ -1102,7 +1103,15 @@ rtlsdr_callback(unsigned char* buf, uint32_t len, void* ctx) {
 				//printf("rtlsdr_callback() STATE 3 cmask %x\n", cal_rcvr_mask);
 				mcb.cal_state = CAL_STATE_0;
 				cal_rcvr = -1;
-				cal_count[rcb->rcvr_num] = 0;
+				// do_cal_thr_func() will clear this bit on successful cal
+				if (!(cal_rcvr_mask & (1 << rcb->rcvr_num)))
+					cal_count[rcb->rcvr_num] = 0;
+			}
+
+			if (cal_rcvr_mask == 0) {
+				cal_rcvr_mask = mcb.rcvrs_mask;
+				// gradually increase cal time to a max of 30 minutes
+				do_cal_time = (do_cal_time >= 1800) ? 1800 : do_cal_time + 1;
 			}
 		}
 	}
@@ -1160,7 +1169,7 @@ rtl_read_thr_func(void* arg) {
 	//printf("ENTERING rtl_read_thr_func() rcvr %d\n", i+1);
 #if 1
 	r = rtlsdr_read_async(rcb->rtldev, rtlsdr_callback,
-	                      (void*)(&mcb.rcb[i]), 1, RTL_READ_COUNT);
+	                      (void*)(&mcb.rcb[i]), 2, RTL_READ_COUNT);
 #else // simulate an rtl read
 	while(!do_exit || running) {
 		usleep(5000); // approximate
