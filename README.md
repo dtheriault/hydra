@@ -20,31 +20,31 @@ users.
 Challenges:
 ======================================================================================
 
- -- Optimizing code bases to run fast/efficiently on ARM based platforms
- -- Providing reliable support for up to 8 RTL dongles
- -- Create tools useful for calibration of RTL dongles for accurate CW Skimmer spot
-    reporting in the Reverse Beacon Network (RBN).
- -- Develop unique hardware which includes front end filters, attenuator, mixer, 
-    multiport coupler, amplifiers to ease integration with low cost RTLSDR dongles.
- -- Unique hardware packaging 
+    -- Optimizing code bases to run fast/efficiently on ARM based platforms
+    -- Providing reliable support for up to 8 RTL dongles
+    -- Create tools useful for calibration of RTL dongles for accurate CW Skimmer spot
+       reporting in the Reverse Beacon Network (RBN).
+    -- Develop unique hardware which includes front end filters, attenuator, mixer, 
+       multiport coupler, amplifiers to ease integration with low cost RTLSDR dongles.
+    -- Unique hardware packaging 
  
 
 Project Organization:
 ======================================================================================
- -- Medusa                Top Level
+    -- Medusa             Top Level
 
-      -- Software	  Software Top Level
-          -- librtlsdr	  RTL Libraries and tools
-          -- cusdrk	  cuSDR GUI Application
-	  -- plotter	  Skimmer Plotter, QRZ/RBN tools
+      -- Software         Software Top Level
+          -- librtlsdr    RTL Libraries and tools
+          -- cusdrk       cuSDR GUI Application
+	  -- plotter      Skimmer Plotter, QRZ/RBN tools
 
-      -- Hardware	  Hardware Top Level
+      -- Hardware         Hardware Top Level
           -- Schematic    Schematic data in Eagle format
-	  -- Boards	  ditto
-	  -- BOM	  BOM files
+	  -- Boards       ditto
+	  -- BOM          BOM files
 	  -- Mechanicals  Hardware Case information
 
-      -- Documentation	  
+      -- Documentation
           -- Specifications	
           -- Test Plans		
           -- Measurement Data
