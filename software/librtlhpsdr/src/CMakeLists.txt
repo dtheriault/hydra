@@ -207,6 +207,30 @@ if( CMAKE_COMPILER_IS_GNUCC )
 	endif()
 endif()
 
+PROJECT(VERSIONHEADER C)
+FIND_PACKAGE(Git)
+FILE(WRITE ${CMAKE_BINARY_DIR}/version.h.in
+"\#define GITVERSION \"@GIT_COMMIT_HASH@\"\n"
+)
+FILE(WRITE ${CMAKE_BINARY_DIR}/version.cmake
+"EXECUTE_PROCESS(
+	COMMAND git log -1 --format=%h
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+	OUTPUT_VARIABLE GIT_COMMIT_HASH
+	OUTPUT_STRIP_TRAILING_WHITESPACE
+ )
+ CONFIGURE_FILE(\${SRC} \${DST} @ONLY)
+")
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR})
+#ADD_EXECUTABLE(main main.c)
+ADD_CUSTOM_TARGET(
+	version
+	${CMAKE_COMMAND} -D SRC=${CMAKE_BINARY_DIR}/version.h.in
+	-D DST=${CMAKE_BINARY_DIR}/version.h
+	-P ${CMAKE_BINARY_DIR}/version.cmake
+)
+ADD_DEPENDENCIES(rtl_hpsdr version)
+
 ########################################################################
 # Install built library files & utilities
 ########################################################################
