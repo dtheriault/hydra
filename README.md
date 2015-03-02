@@ -36,13 +36,13 @@ Project Organization:
       -- Software         Software Top Level
           -- librtlsdr    RTL Libraries and tools
           -- cusdrk       cuSDR GUI Application
-	  -- plotter      Skimmer Plotter, QRZ/RBN tools
+          -- plotter      Skimmer Plotter, QRZ/RBN tools
 
       -- Hardware         Hardware Top Level
           -- Schematic    Schematic data in Eagle format
-	  -- Boards       ditto
-	  -- BOM          BOM files
-	  -- Mechanicals  Hardware Case information
+          -- Boards       ditto
+          -- BOM          BOM files
+          -- Mechanicals  Hardware Case information
 
       -- Documentation
           -- Specifications	
