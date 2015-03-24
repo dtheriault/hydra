@@ -1,0 +1,21 @@
+Determining if the function pthread_create exists in the pthreads failed with the following output:
+Change Dir: /home/mh/RTL/LATEST_RTL/DT_GIT/medusa/software/librtlhpsdr/build/CMakeFiles/CMakeTmp
+
+Run Build Command:"/usr/bin/make" "cmTryCompileExec3975920234/fast"
+/usr/bin/make -f CMakeFiles/cmTryCompileExec3975920234.dir/build.make CMakeFiles/cmTryCompileExec3975920234.dir/build
+make[1]: Entering directory '/home/mh/RTL/LATEST_RTL/DT_GIT/medusa/software/librtlhpsdr/build/CMakeFiles/CMakeTmp'
+/usr/bin/cmake -E cmake_progress_report /home/mh/RTL/LATEST_RTL/DT_GIT/medusa/software/librtlhpsdr/build/CMakeFiles/CMakeTmp/CMakeFiles 1
+Building C object CMakeFiles/cmTryCompileExec3975920234.dir/CheckFunctionExists.c.o
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create   -o CMakeFiles/cmTryCompileExec3975920234.dir/CheckFunctionExists.c.o   -c /usr/share/cmake-3.0/Modules/CheckFunctionExists.c
+Linking C executable cmTryCompileExec3975920234
+/usr/bin/cmake -E cmake_link_script CMakeFiles/cmTryCompileExec3975920234.dir/link.txt --verbose=1
+/usr/bin/cc   -DCHECK_FUNCTION_EXISTS=pthread_create    CMakeFiles/cmTryCompileExec3975920234.dir/CheckFunctionExists.c.o  -o cmTryCompileExec3975920234 -rdynamic -lpthreads -lusb-1.0 
+/usr/bin/ld: cannot find -lpthreads
+collect2: error: ld returned 1 exit status
+CMakeFiles/cmTryCompileExec3975920234.dir/build.make:89: recipe for target 'cmTryCompileExec3975920234' failed
+make[1]: *** [cmTryCompileExec3975920234] Error 1
+make[1]: Leaving directory '/home/mh/RTL/LATEST_RTL/DT_GIT/medusa/software/librtlhpsdr/build/CMakeFiles/CMakeTmp'
+Makefile:118: recipe for target 'cmTryCompileExec3975920234/fast' failed
+make: *** [cmTryCompileExec3975920234/fast] Error 2
+
+
