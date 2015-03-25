@@ -1,1 +1,0 @@
-/usr/bin/cc  -O3 -DNDEBUG    CMakeFiles/rtl_hpsdr.dir/rtl_hpsdr.c.o CMakeFiles/rtl_hpsdr.dir/downsample.c.o CMakeFiles/rtl_hpsdr.dir/local_sound.c.o  -o rtl_hpsdr -rdynamic librtlsdr.so.0.5git libconvenience_static.a -lusb-1.0 -lpthread -lfftw3 -lasound -lfftw3 -lm -lasound -lm -Wl,-rpath,/home/mh/RTL/LATEST_RTL/DT_GIT/medusa/software/librtlhpsdr/build/src: 
