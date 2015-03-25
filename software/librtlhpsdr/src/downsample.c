@@ -37,7 +37,7 @@
 #endif
 
 #define MAX_LOOPS 5
-#define FILTER_LEN 4
+#define FILTER_LEN 8
 
 static float coeff_hb[FILTER_LEN] = {
 	// 0.0, skip this as we want a multiple of 4
@@ -48,15 +48,34 @@ static float coeff_hb[FILTER_LEN] = {
 };
 
 // optimized for intrinsics
+static float coeff_hb3[FILTER_LEN*2] = {
+	0.240196626329132970,
+	0.240196626329132970,
+	0.519606747341734180,
+	0.519606747341734180,
+	0.240196626329132970,
+	0.240196626329132970,
+	0.0,
+	0.0,
+};
+
 static float coeff_hb2[FILTER_LEN*2] = {
-	0.240196626329132970,
-	0.240196626329132970,
-	0.519606747341734180,
-	0.519606747341734180,
-	0.240196626329132970,
-	0.240196626329132970,
-	0.0,
-	0.0,
+	 0.007459452182686200,
+	 0.007459452182686200,
+	-0.053643924388308561,
+	-0.053643924388308561,
+	 0.296225648097030230,
+	 0.296225648097030230,
+	 0.499917648217184480,
+	 0.499917648217184480,
+	 0.296225648097030230,
+	 0.296225648097030230,
+	-0.053643924388308561,
+	-0.053643924388308561,
+	 0.007459452182686200,
+	 0.007459452182686200,
+	 0.000000000000000000,
+	 0.000000000000000000,
 };
 
 struct iq_bufs {
@@ -76,13 +95,14 @@ downsample(struct rcvr_cb* rcb) {
 	static float iq_buf_192[MAX_RCVRS][RTL_READ_COUNT/8] __attribute__((aligned(16)));
 	static float iq_buf_96[MAX_RCVRS][RTL_READ_COUNT/16] __attribute__((aligned(16)));
 	static struct iq_bufs iq_buf_loop[MAX_RCVRS][MAX_LOOPS];
-	static vector_type h0, h1, v, s;
+	static vector_type h0, h1, h2, v, s;
 
 	// just need to do once through for each rcvr
 	if (rcb->output_rate != mcb->output_rate) {
 		rcb->output_rate = mcb->output_rate;
 		h0 = vector_load(coeff_hb2);
 		h1 = vector_load(coeff_hb2 + 4);
+		h2 = vector_load(coeff_hb2 + 8);
 		iq_buf_loop[rcb->rcvr_num][0].in = rcb->iq_buf;
 		iq_buf_loop[rcb->rcvr_num][0].out = iq_buf_768[rcb->rcvr_num];
 		iq_buf_loop[rcb->rcvr_num][1].in = iq_buf_768[rcb->rcvr_num];
@@ -126,6 +146,7 @@ downsample(struct rcvr_cb* rcb) {
 			s = vector_zero;
 			s = vector_mac(s, pSrc, h0);
 			s = vector_mac(s, pSrc+4, h1);
+			s = vector_mac(s, pSrc+8, h2);
 			vector_store(rcb->dest, s);
 
 			iq_buf_loop[rcb->rcvr_num][l].out[k++] = rcb->dest[0] + rcb->dest[2];
