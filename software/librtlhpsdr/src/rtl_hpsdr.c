@@ -988,8 +988,7 @@ do_cal_thr_func(void* arg) {
 		current = (float)mcb.calibrate + ((n - (FFT_SIZE / 2)) * bin);
 		i = (int)current - mcb.calibrate;
 		//printf("rcvr:%d i:%d n:%d l:%f c:%f o:%d\n", rcb->rcvr_num+1, i, n, last, current, (int)(current - mcb.calibrate));
-		// if cal found a signal consider it a success for this rcvr
-		if (i) cal_rcvr_mask ^= 1 << rcb->rcvr_num;
+		cal_rcvr_mask ^= 1 << rcb->rcvr_num;
 
 		no_signal = (((FFT_SIZE / 2) == n) && (current == mcb.calibrate)) ? no_signal + 1 : 0;
 		if (10 == no_signal) {
