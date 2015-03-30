@@ -456,8 +456,19 @@ hpsdrsim_sendiq_thr_func(void* arg) {
 		if(rcb->iqSamples_remaining < 0)
 			rcb->iqSamples_remaining = 0;
 
+		if(rcb->new_rate) {
+			rcb->new_rate = 0;
+			if (rcb->resamp) resamp_crcf_destroy(rcb->resamp);
+			rcb->resamp = resamp_crcf_create((float) mcb.output_rate/(float)RTL_SAMPLE_RATE,
+				7,      // filter length
+				0.25f,  // filter cut-off frequency
+				40.0f,  // filter attenuation [dB],
+				32);    // resolution
+		}
+
 		// downsample starting at any remaining offset
-		downsample(rcb);
+		resamp_crcf_execute_block(rcb->resamp, &(rcb->iq_buf[0]), RTL_READ_COUNT/2,
+			&(rcb->iqSamples[rcb->iqSamples_remaining * 2]), &rcb->num_samps);
 
 		switch(mcb.output_rate) {
 		case 48000:
@@ -619,6 +630,10 @@ hpsdrsim_thread(void* arg) {
 
 							default:
 								printf("WARNING: UNSUPPORTED RATE: %x!!!\n", last_rate);
+							}
+
+							for(i = 0; i < mcb.active_num_rcvrs; i++) {
+								mcb.rcb[i].new_rate = 1;
 							}
 
 							printf("Setting hpsdr output rate to %d hz\n",
@@ -1562,6 +1577,12 @@ main(int argc, char* argv[]) {
 		mcb.rcb[i].mcb = &mcb;
 		mcb.rcb[i].new_freq = 0;
 		mcb.rcb[i].output_rate = 0;
+		mcb.rcb[i].resamp = resamp_crcf_create((float) mcb.output_rate/(float)RTL_SAMPLE_RATE,
+                                            7,      // filter length
+                                            0.25f,  // filter cut-off frequency
+                                            40.0f,  // filter attenuation [dB],
+                                            32);    // resolution
+
 		printf("\nRcvr %d (ordered as %d) settings...\n", i + 1, mcb.rcvr_order[i]);
                 rtlsdr_get_device_usb_strings(i, vendor, product, serial);
 		printf("  S/N \t\t\t%s\n", serial);

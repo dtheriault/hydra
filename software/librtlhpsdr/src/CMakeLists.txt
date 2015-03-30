@@ -77,9 +77,9 @@ endif()
 add_executable(rtl_sdr rtl_sdr.c)
 add_executable(rtl_tcp rtl_tcp.c)
 if(WIN32)
-add_executable(rtl_hpsdr rtl_hpsdr.c downsample.c)
+add_executable(rtl_hpsdr rtl_hpsdr.c)
 else()
-add_executable(rtl_hpsdr rtl_hpsdr.c downsample.c local_sound.c)
+add_executable(rtl_hpsdr rtl_hpsdr.c local_sound.c)
 endif()
 add_executable(rtl_test rtl_test.c)
 add_executable(rtl_fm rtl_fm.c)
@@ -100,6 +100,7 @@ target_link_libraries(rtl_hpsdr rtlsdr_shared convenience_static
     ${LIBUSB_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${FFTW3_LIBRARIES}
+    ${LIBLIQUID_LIBRARIES}
 )
 target_link_libraries(rtl_test rtlsdr_shared convenience_static
     ${LIBUSB_LIBRARIES}

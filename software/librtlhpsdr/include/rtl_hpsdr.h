@@ -54,6 +54,7 @@
 #include <libgen.h>
 #include <errno.h>
 #include <rtl-sdr.h>
+#include <liquid/liquid.h>
 #ifdef INCLUDE_NEON
 #include <arm_neon.h>
 #elif defined INCLUDE_SSE2
@@ -115,6 +116,7 @@ struct main_cb {
 		float dest[4] __attribute__((aligned(16)));
 		int rcvr_num;
 		int new_freq;
+		int new_rate;
 		int curr_freq;
 		int output_rate;
 		u_int rcvr_mask;
@@ -122,9 +124,11 @@ struct main_cb {
 		struct main_cb* mcb;
 		pthread_t hpsdrsim_sendiq_thr;
 		pthread_t rtl_read_thr;
+		int num_samps;
 
 		int iqSample_offset;
 		int iqSamples_remaining;
+		resamp_crcf  resamp;
 		float iqSamples[(RTL_READ_COUNT + (IQ_FRAME_DATA_LEN * 2))];
 
 		float rtl_buf[RTL_READ_COUNT];
