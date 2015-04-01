@@ -128,7 +128,7 @@ struct main_cb {
 
 		int iqSample_offset;
 		int iqSamples_remaining;
-		resamp_crcf  resamp;
+		resamp_crcf resamp;
 		float iqSamples[(RTL_READ_COUNT + (IQ_FRAME_DATA_LEN * 2))];
 
 		float rtl_buf[RTL_READ_COUNT];

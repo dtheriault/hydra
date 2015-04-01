@@ -436,6 +436,8 @@ void*
 hpsdrsim_sendiq_thr_func(void* arg) {
 	int samps_packet, i;
 	struct rcvr_cb* rcb = (struct rcvr_cb*) arg;
+	float *p_out;
+	static int M;
 
 	rcb->iqSample_offset = rcb->iqSamples_remaining = 0;
 
@@ -458,17 +460,30 @@ hpsdrsim_sendiq_thr_func(void* arg) {
 
 		if(rcb->new_rate) {
 			rcb->new_rate = 0;
+#if 0
 			if (rcb->resamp) resamp_crcf_destroy(rcb->resamp);
 			rcb->resamp = resamp_crcf_create((float) mcb.output_rate/(float)RTL_SAMPLE_RATE,
-				70,      // filter length
-				0.50f/((float)RTL_SAMPLE_RATE/(float)mcb.output_rate), // filter cut-off frequency
-				60.0f,  // filter attenuation [dB],
-				64);    // resolution
+				7,      // filter length
+				0.125f, // filter cut-off frequency
+				40.0f,  // filter attenuation [dB],
+				32);    // resolution
+#else
+			if (rcb->iir_q) iirdecim_crcf_destroy(rcb->iir_q);
+			M = RTL_SAMPLE_RATE/mcb.output_rate;
+			rcb->iir_q = iirdecim_crcf_create_default(M,4);
+#endif
 		}
 
 		// downsample starting at any remaining offset
+#if 0
 		resamp_crcf_execute_block(rcb->resamp, &(rcb->iq_buf[0]), RTL_READ_COUNT/2,
 			&(rcb->iqSamples[rcb->iqSamples_remaining * 2]), &rcb->num_samps);
+#else
+		// decimate input
+		p_out = &(rcb->iqSamples[rcb->iqSamples_remaining * 2]);
+		for (i=0; i<RTL_READ_COUNT/M; i++)
+			iirdecim_crcf_execute(rcb->iir_q, &rcb->iq_buf[M*i], &p_out[i]);
+#endif
 
 		switch(mcb.output_rate) {
 		case 48000:
@@ -1544,7 +1559,7 @@ main(int argc, char* argv[]) {
 	for(r = 0; r < 4; r++) {
 		for(i = 0; i < 256; i++) {
 			rtl_lut[r][i] = (float)(i - 127) *
-				(float)(mcb.signal_multiplier - (r * 11));
+				(float)(mcb.signal_multiplier - (r * 10));
 		}
 	}
 
@@ -1577,12 +1592,16 @@ main(int argc, char* argv[]) {
 		mcb.rcb[i].mcb = &mcb;
 		mcb.rcb[i].new_freq = 0;
 		mcb.rcb[i].output_rate = 0;
+#if 0
 		mcb.rcb[i].resamp = resamp_crcf_create((float) mcb.output_rate/(float)RTL_SAMPLE_RATE,
                                             7,      // filter length
-                                            0.25f, // filter cut-off frequency
+                                            0.125f, // filter cut-off frequency
                                             40.0f,  // filter attenuation [dB],
-                                            64);    // resolution
+                                            32);    // resolution
+#else
+		mcb.rcb[i].iir_q = NULL;
 		mcb.rcb[i].new_rate = 1;
+#endif
 
 		printf("\nRcvr %d (ordered as %d) settings...\n", i + 1, mcb.rcvr_order[i]);
                 rtlsdr_get_device_usb_strings(i, vendor, product, serial);
