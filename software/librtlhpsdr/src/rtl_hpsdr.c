@@ -460,10 +460,10 @@ hpsdrsim_sendiq_thr_func(void* arg) {
 			rcb->new_rate = 0;
 			if (rcb->resamp) resamp_crcf_destroy(rcb->resamp);
 			rcb->resamp = resamp_crcf_create((float) mcb.output_rate/(float)RTL_SAMPLE_RATE,
-				70,      // filter length
+				7,      // filter length
 				0.50f/((float)RTL_SAMPLE_RATE/(float)mcb.output_rate), // filter cut-off frequency
-				60.0f,  // filter attenuation [dB],
-				64);    // resolution
+				40.0f,  // filter attenuation [dB],
+				32);    // resolution
 		}
 
 		// downsample starting at any remaining offset
@@ -1581,7 +1581,7 @@ main(int argc, char* argv[]) {
                                             7,      // filter length
                                             0.25f, // filter cut-off frequency
                                             40.0f,  // filter attenuation [dB],
-                                            64);    // resolution
+                                            32);    // resolution
 		mcb.rcb[i].new_rate = 1;
 
 		printf("\nRcvr %d (ordered as %d) settings...\n", i + 1, mcb.rcvr_order[i]);
