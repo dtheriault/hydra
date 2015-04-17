@@ -546,14 +546,14 @@ hpsdrsim_sendiq_thr_func (void *arg)
 		   mcb.rcb[rcb->rcvr_num].new_freq,
 		   mcb.freq_offset[rcb->rcvr_num]);
 	    }
-	    else {
-	       printf ("Set rcvr %d to freq %d with offset %+d\n",
-		       mcb.rcb[rcb->rcvr_num].rcvr_num + 1,
-		       mcb.rcb[rcb->rcvr_num].new_freq,
-		       mcb.freq_offset[rcb->rcvr_num]);
-	    }
-	    mcb.rcb[rcb->rcvr_num].curr_freq =
-	       mcb.rcb[rcb->rcvr_num].new_freq;
+            printf
+              ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %d, agc: %s, direct: %s\n",
+               mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
+               mcb.rcb[i].curr_freq + mcb.up_xtal, mcb.rcb[i].curr_freq,
+               mcb.gain[i], mcb.agc_mode[i] ? "on" : "off",
+               mcb.direct_mode[i] ? "on" : "off");
+
+	    mcb.rcb[rcb->rcvr_num].curr_freq = mcb.rcb[rcb->rcvr_num].new_freq;
 	    mcb.rcb[rcb->rcvr_num].new_freq = 0;
 	 }
       }
@@ -1500,7 +1500,7 @@ parse_config (char *conf_file)
    char confbuf[MAXSTR];
 
    if ((fp = fopen (conf_file, "r")) != NULL) {
-      printf ("\nParsing config file %s\n\n", conf_file);
+     //      printf ("\nParsing config file %s\n\n", conf_file);
 
       while (fgets (confbuf, MAXSTR, fp) != NULL) {
 	 line++;
