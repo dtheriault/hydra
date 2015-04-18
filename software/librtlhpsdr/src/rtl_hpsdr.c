@@ -471,7 +471,9 @@ load_packet (struct rcvr_cb *rcb)
 void *
 hpsdrsim_sendiq_thr_func (void *arg)
 {
-   int samps_packet, i;
+  int samps_packet, i;
+  char num[16];
+
    struct rcvr_cb *rcb = (struct rcvr_cb *) arg;
 
    rcb->iqSample_offset = rcb->iqSamples_remaining = 0;
@@ -546,11 +548,16 @@ hpsdrsim_sendiq_thr_func (void *arg)
 		   mcb.rcb[rcb->rcvr_num].new_freq,
 		   mcb.freq_offset[rcb->rcvr_num]);
 	    }
+
+	    sprintf (num, "%d", mcb.gain[rcb->rcvr_num]);
+
             printf
-              ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %d, agc: %s, direct: %s\n",
+              ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %s, agc: %s, direct: %s\n",
                mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
-               mcb.rcb[i].curr_freq + mcb.up_xtal, mcb.rcb[i].curr_freq,
-               mcb.gain[i], mcb.agc_mode[i] ? "on" : "off",
+               mcb.rcb[i].curr_freq + mcb.up_xtal + mcb.freq_offset[i], 
+	       mcb.rcb[i].curr_freq + mcb.freq_offset[i], 
+               mcb.gain[i] ? num : "auto", 
+	       mcb.agc_mode[i] ? "on" : "off",
                mcb.direct_mode[i] ? "on" : "off");
 
 	    mcb.rcb[rcb->rcvr_num].curr_freq = mcb.rcb[rcb->rcvr_num].new_freq;
@@ -847,7 +854,8 @@ hpsdrsim_stop_threads ()
 int
 update_dongle ()
 {
-    int i, r, num;
+    int i, r;
+    char num[16];
     rtlsdr_dev_t *rtldev;
 
     printf("\n");
@@ -857,11 +865,15 @@ update_dongle ()
 	rtldev = mcb.rcb[i].rtldev;
 
 	if (mcb.gain[i]) {
+  	    // Set manual gain mode
 	    r = rtlsdr_set_tuner_gain_mode (rtldev, 1);
+  	    // Set new gain value
 	    r |= rtlsdr_set_tuner_gain (rtldev, mcb.gain[i]);
 	}
 	else
+  	    // Set automatic gain mode
 	    r = rtlsdr_set_tuner_gain_mode (rtldev, 0);
+
 	if (r < 0) {
 	    printf ("WARNING: Failed to set tuner gain!\n");
 	    return (-1);
@@ -889,12 +901,15 @@ update_dongle ()
 	}
 
 
-	printf
-	    ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %d, agc: %s, direct: %s\n",
-	     mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
-	     mcb.rcb[i].curr_freq + mcb.up_xtal, mcb.rcb[i].curr_freq,
-	     mcb.gain[i], mcb.agc_mode[i] ? "on" : "off",
-	     mcb.direct_mode[i] ? "on" : "off");
+	//	sprintf (num, "%d", mcb.gain[i]);
+
+	//	printf
+	//	    ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %s, agc: %s, direct: %s\n",
+	//	     mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
+	//	     mcb.rcb[i].curr_freq + mcb.up_xtal, mcb.rcb[i].curr_freq,
+	//	     mcb.gain[i] ? num : "auto",
+	//	     mcb.agc_mode[i] ? "on" : "off",
+	//	     mcb.direct_mode[i] ? "on" : "off");
     }
 
     return 0;
