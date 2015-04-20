@@ -98,6 +98,15 @@ struct main_cb {
 	int direct_mode[MAX_RCVRS + 1];
 	int gain[MAX_RCVRS + 1];
 	int freq_offset[MAX_RCVRS + 1];
+        int center_freq[MAX_RCVRS + 1];
+
+	// Added to handle dynamic config file updates
+	int last_agc_mode[MAX_RCVRS + 1];
+	int last_direct_mode[MAX_RCVRS + 1];
+	int last_gain[MAX_RCVRS + 1];
+	int last_freq_offset[MAX_RCVRS + 1];
+        int last_center_freq[MAX_RCVRS + 1];
+
 	int rcvr_order[MAX_RCVRS + 1];
 	int signal_multiplier;
 	int cal_state;

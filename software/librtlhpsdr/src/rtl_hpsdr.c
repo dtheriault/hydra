@@ -473,6 +473,7 @@ hpsdrsim_sendiq_thr_func (void *arg)
 {
   int samps_packet, i;
   char num[16];
+  register int rxnum;
 
    struct rcvr_cb *rcb = (struct rcvr_cb *) arg;
 
@@ -549,16 +550,20 @@ hpsdrsim_sendiq_thr_func (void *arg)
 		   mcb.freq_offset[rcb->rcvr_num]);
 	    }
 
-	    sprintf (num, "%d", mcb.gain[rcb->rcvr_num]);
+            rxnum = rcb->rcvr_num;
+
+	    sprintf (num, "%d", mcb.gain[rxnum]);
 
             printf
-              ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %s, agc: %s, direct: %s\n",
-               mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
-               mcb.rcb[i].curr_freq + mcb.up_xtal + mcb.freq_offset[i], 
-	       mcb.rcb[i].curr_freq + mcb.freq_offset[i], 
-               mcb.gain[i] ? num : "auto", 
-	       mcb.agc_mode[i] ? "on" : "off",
-               mcb.direct_mode[i] ? "on" : "off");
+              ("INFO: Rx[%d]: mixer: %dHz, offset: %dHz, center: %dHz [%8dHz], gain: %s, agc: %s, direct: %s\n",
+               mcb.rcb[rxnum].rcvr_num + 1, 
+	       mcb.up_xtal,
+	       mcb.freq_offset[rxnum],
+               mcb.rcb[rxnum].curr_freq + mcb.up_xtal + mcb.freq_offset[rxnum], 
+	       mcb.rcb[rxnum].curr_freq + mcb.freq_offset[rxnum], 
+               mcb.gain[rxnum] ? num : "auto", 
+	       mcb.agc_mode[rxnum] ? "on" : "off",
+               mcb.direct_mode[rxnum] ? "on" : "off");
 
 	    mcb.rcb[rcb->rcvr_num].curr_freq = mcb.rcb[rcb->rcvr_num].new_freq;
 	    mcb.rcb[rcb->rcvr_num].new_freq = 0;
@@ -851,6 +856,20 @@ hpsdrsim_stop_threads ()
    }
 }
 
+
+void update_config()
+{
+    int i, r;
+    for (i = 0; i < mcb.total_num_rcvrs; i++) {
+
+      mcb.last_gain[i] = mcb.gain[i];
+      mcb.last_freq_offset[i] = mcb.freq_offset[i];
+      mcb.last_agc_mode[i] = mcb.agc_mode[i];
+      mcb.last_direct_mode[i] = mcb.direct_mode[i];
+      mcb.last_center_freq[i] = mcb.center_freq[i];
+    }
+}
+
 int
 update_dongle ()
 {
@@ -864,7 +883,7 @@ update_dongle ()
 
 	rtldev = mcb.rcb[i].rtldev;
 
-	if (mcb.gain[i]) {
+	if (mcb.gain[i] > 0 ) {
   	    // Set manual gain mode
 	    r = rtlsdr_set_tuner_gain_mode (rtldev, 1);
   	    // Set new gain value
@@ -879,12 +898,21 @@ update_dongle ()
 	    return (-1);
 	}
 
-	r = rtlsdr_set_center_freq (rtldev,
-				    (mcb.rcb[i].new_freq + mcb.up_xtal +
-				     mcb.freq_offset[i]));
+	// First read current center freq as it may have changed manually
+	// independently from change in config file.
+	mcb.last_center_freq[i] = rtlsdr_get_center_freq (rtldev);
+
+	// Subtract out the last offset 
+	mcb.center_freq[i] = mcb.last_center_freq[i] - mcb.last_freq_offset[i];
+
+	// Add in our new freq_offset
+	mcb.center_freq[i] += mcb.freq_offset[i];
+
+	// Now write our updated center freq; phew...
+	r = rtlsdr_set_center_freq (rtldev, mcb.center_freq[i]);
 	if (r < 0) {
 	    printf ("WARNING: Failed to set tuner freq to %dhz!\n",
-		    (mcb.rcb[i].new_freq + mcb.up_xtal + mcb.freq_offset[i]));
+		    mcb.center_freq[i]);
 	    return (-1);
 	}
 
@@ -900,16 +928,18 @@ update_dongle ()
 	    return (-1);
 	}
 
+	sprintf (num, "%d", mcb.gain[i]);
 
-	//	sprintf (num, "%d", mcb.gain[i]);
-
-	//	printf
-	//	    ("INFO: Rx[%d]: mixer: %d Hz, center freq %d Hz [%8d Hz], gain: %s, agc: %s, direct: %s\n",
-	//	     mcb.rcb[i].rcvr_num + 1, mcb.up_xtal,
-	//	     mcb.rcb[i].curr_freq + mcb.up_xtal, mcb.rcb[i].curr_freq,
-	//	     mcb.gain[i] ? num : "auto",
-	//	     mcb.agc_mode[i] ? "on" : "off",
-	//	     mcb.direct_mode[i] ? "on" : "off");
+	printf
+	  ("INFO: Rx[%d]: mixer: %dHz, offset: %dHz, center: %dHz [%8dHz], gain: %s, agc: %s, direct: %s\n",
+	   mcb.rcb[i].rcvr_num + 1, 
+	   mcb.up_xtal,
+	   mcb.freq_offset[i],
+	   mcb.center_freq[i],
+	   mcb.center_freq[i] - mcb.up_xtal, 
+	   mcb.gain[i] ? num : "auto", 
+	   mcb.agc_mode[i] ? "on" : "off",
+	   mcb.direct_mode[i] ? "on" : "off");
     }
 
     return 0;
@@ -918,7 +948,7 @@ update_dongle ()
 void *
 hpsdrsim_watchdog_thread (void *arg)
 {
-   int i, last_time = 0;
+  int i, last_time = 0;
    struct stat sb;
    u_int last_sequence = 0xffffffff;
 
@@ -958,6 +988,9 @@ hpsdrsim_watchdog_thread (void *arg)
 	 }
 	 if (last_time != sb.st_mtime) {
 	    last_time = sb.st_mtime;
+	    
+	    // save our current per receiver config settings
+	    update_config();
 
             if (parse_config (conf_file) == 0) {
               if (update_dongle () != 0) {
@@ -977,12 +1010,12 @@ hpsdrsim_watchdog_thread (void *arg)
 	       printf ("  up_xtal freq:\t\t%d hz\n", mcb.up_xtal);
 	    printf ("\nfreq_offset ");
             */
-	    for (i = 0; i < mcb.active_num_rcvrs; i++) {
+	    //	    for (i = 0; i < mcb.active_num_rcvrs; i++) {
               //  printf ("%d%s", mcb.freq_offset[i],
               //  (mcb.active_num_rcvrs - 1 != i) ? "," : "\n\n");
               //this should trigger a retune on each active dongle
-              mcb.rcb[i].new_freq = mcb.rcb[i].curr_freq;
-	    }
+	    //              mcb.rcb[i].new_freq = mcb.rcb[i].curr_freq;
+	    // }
 	 }
       }
    }
@@ -1600,11 +1633,17 @@ main (int argc, char *argv[])
 
    ftime (&test_start_time);
 
+   // Initialize per receiver config settings
    for (i = 0; i < MAX_RCVRS; i++) {
       mcb.agc_mode[i] = 0;
+      mcb.last_agc_mode[i] = 0;
       mcb.direct_mode[i] = 0;
+      mcb.last_direct_mode[i] = 0;
       mcb.gain[i] = 0;
+      mcb.last_gain[i] = 0;
       mcb.freq_offset[i] = 0;
+      mcb.last_freq_offset[i] = 0;
+
       mcb.rcvr_order[i] = i + 1;
       copy_rcvr[i] = -1;
       memset (&mcb.freq_ltime[i], 0, sizeof (mcb.freq_ltime[i]));
