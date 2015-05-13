@@ -1253,7 +1253,7 @@ int rtlsdr_set_direct_sampling(rtlsdr_dev_t *dev, int on)
 		/* opt_adc_iq = 0, default ADC_I/ADC_Q datapath */
 		r |= rtlsdr_demod_write_reg(dev, 0, 0x06, 0x80, 1);
 
-		fprintf(stderr, "Disabled direct sampling mode\n");
+                //fprintf(stderr, "Disabled direct sampling mode\n");
 		dev->direct_sampling = 0;
 	}
 
