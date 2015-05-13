@@ -95,7 +95,7 @@ downsample(struct rcvr_cb* rcb) {
 	static float iq_buf_192[MAX_RCVRS][RTL_READ_COUNT/8] __attribute__((aligned(16)));
 	static float iq_buf_96[MAX_RCVRS][RTL_READ_COUNT/16] __attribute__((aligned(16)));
 	static struct iq_bufs iq_buf_loop[MAX_RCVRS][MAX_LOOPS];
-	static vector_type h0, h1, h2, v, s;
+	static vector_type h0, h1, h2, h3, v, s;
 
 	// just need to do once through for each rcvr
 	if (rcb->output_rate != mcb->output_rate) {
@@ -103,6 +103,7 @@ downsample(struct rcvr_cb* rcb) {
 		h0 = vector_load(coeff_hb2);
 		h1 = vector_load(coeff_hb2 + 4);
 		h2 = vector_load(coeff_hb2 + 8);
+		h3 = vector_load(coeff_hb2 + 12);
 		iq_buf_loop[rcb->rcvr_num][0].in = rcb->iq_buf;
 		iq_buf_loop[rcb->rcvr_num][0].out = iq_buf_768[rcb->rcvr_num];
 		iq_buf_loop[rcb->rcvr_num][1].in = iq_buf_768[rcb->rcvr_num];
@@ -147,6 +148,7 @@ downsample(struct rcvr_cb* rcb) {
 			s = vector_mac(s, pSrc, h0);
 			s = vector_mac(s, pSrc+4, h1);
 			s = vector_mac(s, pSrc+8, h2);
+			s = vector_mac(s, pSrc+12, h3);
 			vector_store(rcb->dest, s);
 
 			iq_buf_loop[rcb->rcvr_num][l].out[k++] = rcb->dest[0] + rcb->dest[2];
