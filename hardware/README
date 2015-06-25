@@ -1,1 +1,30 @@
 This is the HW tree, schematics, pcb layouts, BOM's etc.
+
+-----------------------------------------------------------------------------
+Change Log:
+
+25.Jun.2015  Initial submit of hardware files for Eagle development
+
+
+-----------------------------------------------------------------------------
+Directories: 
+
+medusa/hardware
+
+        top level hardware tree
+
+hydra/
+
+        Eagle schematic and board files for Receiver and Mixer boards
+        Includes first pass BOM
+        Includes .pdf's of board layouts suitable for printing
+
+libraries/
+
+          Eagle custom parts library files.  Add to Eagle ${EAGLE_LIBRARIES} 
+          directory.
+
+multicoupler/
+
+          Early 8 port 75 ohm multi-coupler using Minicircuits component
+
