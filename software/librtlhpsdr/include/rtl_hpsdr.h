@@ -67,6 +67,7 @@
 #define MAX_BUFFER_LEN 2048
 #define HPSDR_FRAME_LEN 1032
 #define IQ_FRAME_DATA_LEN 63
+#define RTL_BANDWIDTH 300000   // Tuner set to 400 Khz IF BW 
 #define DOWNSAMPLE_192 8    // downsample value used to get 192khz
 #define RTL_SAMPLE_RATE (192000 * DOWNSAMPLE_192)
 #define RTL_READ_COUNT (16384 * DOWNSAMPLE_192)
@@ -99,13 +100,18 @@ struct main_cb {
 	int gain[MAX_RCVRS + 1];
 	int freq_offset[MAX_RCVRS + 1];
         int center_freq[MAX_RCVRS + 1];
-
+        int if_bw[MAX_RCVRS + 1];
+        int gain_mode[MAX_RCVRS + 1];
+       
 	// Added to handle dynamic config file updates
 	int last_agc_mode[MAX_RCVRS + 1];
 	int last_direct_mode[MAX_RCVRS + 1];
 	int last_gain[MAX_RCVRS + 1];
 	int last_freq_offset[MAX_RCVRS + 1];
         int last_center_freq[MAX_RCVRS + 1];
+        int last_if_bw[MAX_RCVRS + 1];
+        int last_gain_mode[MAX_RCVRS + 1];
+       
 
 	int rcvr_order[MAX_RCVRS + 1];
 	int signal_multiplier;

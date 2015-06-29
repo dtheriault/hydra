@@ -18,6 +18,7 @@
  */
 
 #include "rtl_hpsdr.h"
+#include "convenience/convenience.h"
 #include "version.h"
 #include <sched.h>
 #include <unistd.h>
@@ -553,18 +554,19 @@ hpsdrsim_sendiq_thr_func (void *arg)
             rxnum = rcb->rcvr_num;
 
 	    sprintf (num, "%d", mcb.gain[rxnum]);
-
+#if 1
             printf
-              ("INFO: Rx[%d]: mixer: %dHz, offset: %dHz, center: %dHz [%8dHz], gain: %s, agc: %s, direct: %s\n",
+              ("INFO: Rx[%d]: if_bw: %dHz, offset: %dHz, center: %dHz [%8dHz], gain: %0.2f dB, gain_mode: %s, agc: %s, direct: %s\n",
                mcb.rcb[rxnum].rcvr_num + 1, 
-	       mcb.up_xtal,
+	       mcb.if_bw[rxnum],
 	       mcb.freq_offset[rxnum],
                mcb.rcb[rxnum].curr_freq + mcb.up_xtal + mcb.freq_offset[rxnum], 
 	       mcb.rcb[rxnum].curr_freq + mcb.freq_offset[rxnum], 
-               mcb.gain[rxnum] ? num : "auto", 
+               mcb.gain[rxnum] / 10.0,
+	       mcb.gain_mode[rxnum] ? "auto" : "manual", 
 	       mcb.agc_mode[rxnum] ? "on" : "off",
                mcb.direct_mode[rxnum] ? "on" : "off");
-
+#endif
 	    mcb.rcb[rcb->rcvr_num].curr_freq = mcb.rcb[rcb->rcvr_num].new_freq;
 	    mcb.rcb[rcb->rcvr_num].new_freq = 0;
 	 }
@@ -862,13 +864,18 @@ void update_config()
     int i, r;
     for (i = 0; i < mcb.total_num_rcvrs; i++) {
 
+      mcb.last_if_bw[i] = mcb.if_bw[i];
       mcb.last_gain[i] = mcb.gain[i];
+      mcb.last_gain_mode[i] = mcb.gain_mode[i];
       mcb.last_freq_offset[i] = mcb.freq_offset[i];
       mcb.last_agc_mode[i] = mcb.agc_mode[i];
       mcb.last_direct_mode[i] = mcb.direct_mode[i];
       mcb.last_center_freq[i] = mcb.center_freq[i];
     }
 }
+
+// Supported gain values (22): -6.6 -2.3 0.0 4.1 8.2 11.7 15.8 20.9 24.0 29.2 31.9 32.4 37.5 39.9 42.5 43.9 47.1 50.7 54.1 57.6 62.4 66.1 
+// Supported bandwidth values (9): 300000 400000 550000 700000 1000000 1200000 1300000 1600000 2200000 
 
 int
 update_dongle ()
@@ -883,19 +890,22 @@ update_dongle ()
 
 	rtldev = mcb.rcb[i].rtldev;
 
-	if (mcb.gain[i] > 0 ) {
-  	    // Set manual gain mode
-	    r = rtlsdr_set_tuner_gain_mode (rtldev, 1);
-  	    // Set new gain value
-	    r |= rtlsdr_set_tuner_gain (rtldev, mcb.gain[i]);
-	}
-	else
-  	    // Set automatic gain mode
-	    r = rtlsdr_set_tuner_gain_mode (rtldev, 0);
+	if (mcb.gain_mode[i] > 0 ) {
 
-	if (r < 0) {
+	  // Enable Auto Gain Mode
+	  r = verbose_auto_gain (rtldev);
+	  if (r < 0) {
 	    printf ("WARNING: Failed to set tuner gain!\n");
 	    return (-1);
+	  }
+	}
+	else {
+	  // Set Manual Gain Mode and Gain setting value
+	  r = verbose_gain_set (rtldev, mcb.gain[i]);
+	  if (r < 0) {
+	    printf ("WARNING: Failed to set tuner manual gain!\n");
+	    return (-1);
+	  }
 	}
 
 	// First read current center freq as it may have changed manually
@@ -930,16 +940,21 @@ update_dongle ()
 
 	sprintf (num, "%d", mcb.gain[i]);
 
+#if 1
+	//	gain = mcb.gain[i];
+
 	printf
-	  ("INFO: Rx[%d]: mixer: %dHz, offset: %dHz, center: %dHz [%8dHz], gain: %s, agc: %s, direct: %s\n",
+	  ("INFO: Rx[%d]: if_bw: %dHz, center: %dHz [%8dHz], gain: %0.2f dB, gain_mode: %s, agc: %s, direct: %s\n",
 	   mcb.rcb[i].rcvr_num + 1, 
-	   mcb.up_xtal,
-	   mcb.freq_offset[i],
+	   mcb.if_bw[i],
 	   mcb.center_freq[i],
 	   mcb.center_freq[i] - mcb.up_xtal, 
-	   mcb.gain[i] ? num : "auto", 
+	   mcb.gain[i] / 10.0,
+	   mcb.gain_mode[i] ? "auto" : "manual", 
 	   mcb.agc_mode[i] ? "on" : "off",
 	   mcb.direct_mode[i] ? "on" : "off");
+#endif
+
     }
 
     return 0;
@@ -1425,6 +1440,24 @@ init_rtl (int rcvr_num, int dev_index)
 
    rtldev = mcb.rcb[rcvr_num].rtldev;
 
+   if (mcb.if_bw[rcvr_num] == 0) {
+     printf ("Setting tuner IF BW to %d Hz\n", RTL_BANDWIDTH);
+     r = rtlsdr_set_tuner_bandwidth (rtldev, RTL_BANDWIDTH);
+     if (r < 0) {
+       printf ("WARNING: Failed to set IF BW to %d Hz!\n",RTL_BANDWIDTH);
+       return (-1);
+     }
+   } 
+   else {
+     printf ("Setting tuner IF BW to %d Hz\n", mcb.if_bw[rcvr_num]);
+     r = rtlsdr_set_tuner_bandwidth (rtldev, mcb.if_bw[rcvr_num]);
+     if (r < 0) {
+       printf ("WARNING: Failed to set IF BW to %d Hz!\n",mcb.if_bw[rcvr_num]);
+       return (-1);
+     }
+   } 
+
+
    r = rtlsdr_set_sample_rate (rtldev, RTL_SAMPLE_RATE);
 
    if (r < 0) {
@@ -1434,19 +1467,27 @@ init_rtl (int rcvr_num, int dev_index)
 
    sprintf (num, "%d", mcb.gain[rcvr_num]);
 
-   if (mcb.gain[rcvr_num]) {
-      r = rtlsdr_set_tuner_gain_mode (rtldev, 1);
-      r |= rtlsdr_set_tuner_gain (rtldev, mcb.gain[rcvr_num]);
-   }
-   else
-      r = rtlsdr_set_tuner_gain_mode (rtldev, 0);
+   if (mcb.gain_mode[rcvr_num] > 0) {
 
-   if (r < 0) {
-      printf ("WARNING: Failed to set tuner gain!\n");
-      return (-1);
+     // Enable Auto Gain Mode
+     r = verbose_auto_gain (rtldev);
+     if (r < 0) {
+       printf ("WARNING: Failed to set tuner gain to auto!\n");
+       return (-1);
+     }
+     else
+       printf ("  tuner gain\t\tauto\n");
    }
-   else
-      printf ("  tuner gain\t\t%s\n", (mcb.gain[rcvr_num]) ? num : "auto");
+   else {
+     // Set Manual Gain Mode and Gain setting value
+     r = verbose_gain_set (rtldev, mcb.gain[rcvr_num]);
+     if (r < 0) {
+       printf ("WARNING: Failed to set tuner manual gain!\n");
+       return (-1);
+     }
+     else
+       printf ("  tuner gain\t\t%0.2f dB\n", mcb.gain[rcvr_num]/10.0);
+   }
 
    rtlsdr_set_center_freq (rtldev, 100000000);
    if (r < 0)
@@ -1540,6 +1581,35 @@ set_option (int *option, char *value)
 }
 
 int
+set_gain_option (int *option, char *value)
+{
+   char params[MAX_RCVRS][MAXSTR];
+   int i, count = 0;
+   char *token;
+   const char s[2] = ",";
+
+   // get the first token
+   token = strtok (value, s);
+
+   // walk through other tokens
+   while ((token != NULL) && (count < MAX_RCVRS)) {
+      strcpy (&(params[count++][0]), token);
+      token = strtok (NULL, s);
+   }
+
+   for (i = 0; i < MAX_RCVRS; i++) {
+      if (i < count) {
+	option[i] = (int)(atof(params[i]) * 10); /* tenths of a dB */
+	 option[MAX_RCVRS] = option[i];	// save last
+      }
+      else
+	 option[i] = option[MAX_RCVRS];	// set to last
+   }
+
+   return (count);
+}
+
+int
 parse_config (char *conf_file)
 {
    FILE *fp;
@@ -1563,7 +1633,7 @@ parse_config (char *conf_file)
 	    count = set_option (mcb.direct_mode, value);
 	 }
 	 else if (!strcmp ("tuner_gain", option)) {
-	    count = set_option (mcb.gain, value);
+	    count = set_gain_option (mcb.gain, value);
 	 }
 	 else if (!strcmp ("freq_offset", option)) {
 	    count = set_option (mcb.freq_offset, value);
@@ -1591,6 +1661,12 @@ parse_config (char *conf_file)
 	 }
 	 else if (!strcmp ("ip_addr", option)) {
 	    strcpy (mcb.ip_addr, value);
+	 }
+	 else if (!strcmp ("if_bw", option)) {
+	   count = set_option (mcb.if_bw, value);
+	 }
+	 else if (!strcmp ("gain_mode", option)) {
+	    count = set_option (mcb.gain_mode, value);
 	 }
       }
 
