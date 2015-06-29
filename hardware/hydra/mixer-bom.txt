@@ -1,0 +1,53 @@
+Partlist exported from /home/doug/eagle/Hydra/mixer.sch at 6/20/15 10:14 AM
+
+Qty Value                  Device                      Package        Parts                                              Description                                        
+1                          D_ACACSOT23                 SOT-23         D1                                                 Dual DIODE                                         
+1                          LEDSML0805                  SML0805        LED1                                               LED                                                
+1                          PINHD-1X4                   1X04           JP1                                                PIN HEADER                                         
+10                         SMACONNECTOR_EDGE           SMA_EDGELAUNCH X2, X3, X4, X5, X6, X7, X8, X9, X10, X11           SMA Connector                                      
+1   .001 uf                CAP0805                     0805           C39                                                Capacitor                                          
+6   .01 uf                 CAP0805                     0805           C3, C11, C21, C31, C34, C37                        Capacitor                                          
+11  1 nf                   CAP0805                     0805           C1, C4, C8, C13, C18, C24, C30, C32, C33, C35, C38 Capacitor                                          
+1   1 uf                   CAP_POL1206                 EIA3216        C36                                                Capacitor Polarized                                
+1   10 nH                  INDUCTOR0402                C0402          L25                                                Inductors                                          
+1   10 uf                  CAP_POL1206                 EIA3216        C29                                                Capacitor Polarized                                
+1   10.72 pf               CAP0805                     0805           C15                                                Capacitor                                          
+2   100 pf                 CAP0805                     0805           C19, C23                                           Capacitor                                          
+2   111 nH                 INDUCTORCOILCRAFT-432-2-110 432-2-110      L3, L5                                             Inductors                                          
+3   12 pf                  CAP0805                     0805           C10, C12, C14                                      Capacitor                                          
+1   120 nH                 INDUCTOR1210                1210           L29                                                Inductors                                          
+1   120 uH                 INDUCTORCOILCRAFT-318-2     318-2          L4                                                 Inductors                                          
+1   150 nH                 INDUCTOR1210                1210           L28                                                Inductors                                          
+2   1500 pf                CAP0805                     0805           C17, C28                                           Capacitor                                          
+5   18                     RESISTOR1206                1206           R3, R7, R11, R18, R22                              Resistor                                           
+2   180 nH                 INDUCTORCOILCRAFT-438-2-180 438-2-180      L14, L24                                           Inductors                                          
+1   1N4004                 1N4004                      DO41-10        D2                                                 DIODE                                              
+2   1k                     RESISTOR1206                1206           R13, R15                                           Resistor                                           
+3   2.7 uH                 INDUCTORRLB0912             RLB0912        L18, L20, L22                                      Inductors                                          
+2   22 pf                  CAP0805                     0805           C9, C42                                            Capacitor                                          
+10  270                    RESISTOR1206                1206           R2, R4, R6, R8, R10, R12, R17, R19, R21, R23       Resistor                                           
+2   3.3 uH                 INDUCTORRLB0912             RLB0912        L16, L23                                           Inductors                                          
+2   30 pf                  CAP0805                     0805           C2, C7                                             Capacitor                                          
+2   33 pf                  CAP0805                     0805           C5, C6                                             Capacitor                                          
+1   330                    RESISTOR1206                1206           R14                                                Resistor                                           
+2   330 nH                 INDUCTORCOILCRAFT-438-2-330 438-2-330      L15, L21                                           Inductors                                          
+1   360 nH                 INDUCTORCOILCRAFT-438-2-360 438-2-360      L17                                                Inductors                                          
+2   39 nH                  INDUCTORCOILCRAFT-457-39NH  457-39         L9, L11                                            Inductors                                          
+1   4.7 nH                 INDUCTOR0402                C0402          L30                                                Inductors                                          
+1   40.19 nH               INDUCTOR1210                1210           L13                                                Inductors                                          
+2   43 nH                  INDUCTORCOILCRAFT-457-43NH  457-43         L8, L12                                            Inductors                                          
+2   5.6                    RESISTOR1206                1206           R25, R28                                           Resistor                                           
+5   50                     RESISTOR1206                1206           R1, R5, R9, R16, R20                               Resistor                                           
+2   56 nH                  INDUCTORCOILCRAFT-318-2     318-2          L1, L6                                             Inductors                                          
+2   56 pf                  CAP0805                     0805           C40, C41                                           Capacitor                                          
+2   680 nH                 INDUCTOR1210                1210           L26, L27                                           Inductors                                          
+2   680 nh                 INDUCTOR1210                1210           L2, L10                                            Inductors                                          
+4   820                    RESISTOR1206                1206           R24, R26, R27, R29                                 Resistor                                           
+1   820 nH                 INDUCTOR1210                1210           L19                                                Inductors                                          
+4   820 pf                 CAP0805                     0805           C20, C22, C25, C27                                 Capacitor                                          
+2   91 pf                  CAP0805                     0805           C16, C26                                           Capacitor                                          
+1   ADE-6+                 ADE-6                       ADE6           MIXER                                                                                                 
+5   ERA-1                  ERA-1                       VV             IC1, IC2, IC3, IC4, IC5                            MONOLITHIC AMPLIFIERS 50 Ohm BROADBAND DC to 8 GHz 
+1   PSC-8-1-75THROUGH_HOLE PSC-8-1-75THROUGH_HOLE      PSC-8-1-75     U$1                                                                                                   
+1   SAW-125MHZ             SAW-125MHZ                  SAW-125M-SMP   SAW1                                                                                                  
+1   V_REG_317SMD           V_REG_317SMD                SOT223         U1                                                 Voltage Regulator                                  
