@@ -32,6 +32,8 @@
         color:#333;
       }
     </style>
+
+
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js">
     </script>
     <script type="text/javascript"
@@ -46,6 +48,8 @@
       NumCallsigns = 0;
       Selected=null
 
+      Lines = [];
+      
       function getIconForCallsign(callsign) {
           var r = 255, g = 0, b = 0;
           
@@ -62,6 +66,7 @@
           if (!Callsigns[this.callsign]) return;
           var old = Selected;
           Selected = this.callsign;
+          
           if (Callsigns[old]) {
               /* Remove the highlight in the previously selected spot. */
               Callsigns[old].marker.setIcon(getIconForCallsign(Callsigns[old]));
@@ -72,8 +77,13 @@
       
       function refreshGeneralInfo() {
           var i = document.getElementById('geninfo');
-          
-          i.innerHTML = NumCallsigns+' spots on screen.';
+
+          i.innerHTML = NumCallsigns+' spots on screen.'+'<br>';
+
+          for ( var x=0; x<NumCallsigns; x++) {
+
+              i.innerHTML += Lines[x]+'<br>';
+          }
       }
       
       function refreshSelectedInfo() {
@@ -85,15 +95,14 @@
       }
       
       function processData(allText) {
-          var allTextLines = allText.split(/\r\n|\n/);
-          var headers = allTextLines[0].split(',');
-          var lines = [];
+          Lines = allText.split(/\r\n|\n/);
+          var headers = Lines[0].split(',');
 
-          NumCallsigns = allTextLines.length - 1;
+          NumCallsigns = Lines.length - 1;
 
-          for (var i=0; i<allTextLines.length; i++) {
+          for (var i=0; i<Lines.length; i++) {
 
-              var data = allTextLines[i].split(',');
+              var data = Lines[i].split(',');
               
               var callsign = data[0];
               var lat = data[1];
@@ -102,16 +111,6 @@
               var icon = null;
 
               var newpos = new google.maps.LatLng(lat, lon);
-                  
-//              marker.setPosition(newpos);
-//              marker.setIcon(getIconForCallsign(callsign));
-
-
-
-//              if (callsign == Selected) {
-//                  refreshSelectedInfo();
-//                  
-//              } else {
 
               marker = new google.maps.Marker({
                   position: new google.maps.LatLng(lat, lon),
@@ -119,9 +118,9 @@
                   icon: getIconForCallsign(callsign)
               });
 
-//              callsign.marker = marker;
-//              marker.callsign = callsign;
-//              Callsigns[callsign] = callsign;
+              callsign.marker = marker;
+              marker.callsign = callsign;
+              Callsigns[callsign] = callsign;
                   
               /* Trap clicks for this marker. */
               google.maps.event.addListener(marker, 'click', selectCallsign);
@@ -148,13 +147,14 @@
               zoom: 5,
               mapTypeId: google.maps.MapTypeId.ROADMAP
           };
+
           Map = new google.maps.Map(document.getElementById("map_canvas"), mapOptions);
-          
+
           /* Setup our timer to poll from the server. */
           window.setInterval(function() {
               fetchData();
               refreshGeneralInfo();
-          }, 15000);
+          }, 3000);
       }
       
     </script>

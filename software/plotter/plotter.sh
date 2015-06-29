@@ -100,7 +100,7 @@ function query_qrz ()
         echo ${Error} >> DEBUG
 
         # see if we got session timeout error
-        if [ "${Error}" == "Session timeout" ]; then
+        if [ "${Error}" == "Session Timeout" ]; then
 
             # if so, try and log in again 
             login_qrz ${myCall} ${myPass}
