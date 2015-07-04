@@ -1,0 +1,27 @@
+Description:  I2C Support Scripts
+---------------------------------
+
+Directory contains the simple scripts to allow programming of the TI CDCE949
+PLL used for the Hydra prototype. 
+
+Files:
+
+pllinit.sh -- Script to program the PLL for 8 channels, 9th being Mixer
+
+dumpregs.sh - Script to read all the PLL registers and display them
+
+pllregs.txt - Text file for register programming values.  Format is simple
+              <offset> <value>
+
+
+Notes:
+
+Register values were generated using the TI Clock Builder utility.  To gen
+new clock rates for the project, re-run the tool for new values and then 
+update the pllregs.txt file.  Re-Run the pllinit.sh script once with new vals.
+
+You only need to run the init script once as the register values are stored
+in the PLL's flash and are restored on power up.  
+
+Rebooting the oDroid C1 does not reset the PLL (currently, would like to do
+this in future).
