@@ -236,7 +236,7 @@ fi
 #        have to do that manually using the cache csv format file.
 #
 while read line; do
-    call=`echo ${line} | awk '{print $4}'`
+    call=`echo ${line} | awk '{print $5}'`
     check_cache ${call};
     if [ $? -ne 0 ]; then
 	echo "  Miss"
