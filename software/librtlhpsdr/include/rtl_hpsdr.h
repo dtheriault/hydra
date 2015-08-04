@@ -81,6 +81,9 @@
 #define CAL_STATE_2	-3
 #define CAL_STATE_3	-4
 
+#define RTL_MODE_SKIMMER 0
+#define RTL_MODE_WSPR    1
+
 struct main_cb {
 	int total_num_rcvrs;
 	int active_num_rcvrs;
@@ -117,6 +120,7 @@ struct main_cb {
 	int signal_multiplier;
 	int cal_state;
 	int calibrate;
+        int rtl_mode;
 
 	struct timeb freq_ltime[MAX_RCVRS];
 	struct timeb freq_ttime[MAX_RCVRS];

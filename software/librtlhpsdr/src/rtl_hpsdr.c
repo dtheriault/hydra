@@ -240,15 +240,57 @@ hpsdrsim_reveal (void)
 {
    int rc, bytes_read;
    u_int i, on = 1;
-
-   u_char init_buffer[19] =
-      { 0xEF, 0xFE, 2 + running, 0, 0, 0, 0, 0, 0, HERMES_FW_VER, 1,
-      'R', 'T', 'L', '_', 'N', '1', 'G', 'P'
-   };				// special ID for SkimSrv
    bool ready = false;
+   u_char init_buffer[19];
 
-   printf ("Revealing myself as a Hermes version %1.1f rcvr.\n",
-	   (float) HERMES_FW_VER / 10.0);
+   if (mcb.rtl_mode == RTL_MODE_SKIMMER) {
+     init_buffer[0] = 0xEF;
+     init_buffer[1] = 0xFE;
+     init_buffer[2] = (2 + running);
+     init_buffer[3] = 0;
+     init_buffer[4] = 0;
+     init_buffer[5] = 0;
+     init_buffer[6] = 0;
+     init_buffer[7] = 0;
+     init_buffer[8] = 0; 
+     init_buffer[9] = HERMES_FW_VER;
+     init_buffer[10] = 1;
+     init_buffer[11] = 'R';
+     init_buffer[12] = 'T';
+     init_buffer[13] = 'L';
+     init_buffer[14] = '_';
+     init_buffer[15] = 'N';
+     init_buffer[16] = '1';
+     init_buffer[17] = 'G';
+     init_buffer[18] = 'P';
+
+     printf ("Revealing myself as a Hermes version %1.1f rcvr. -- Skimmer Mode\n",
+	     (float) HERMES_FW_VER / 10.0);
+   }
+   else {
+     init_buffer[0] = 0xEF;
+     init_buffer[1] = 0xFE;
+     init_buffer[2] = (2 + running);
+     init_buffer[3] = 0;
+     init_buffer[4] = 0;
+     init_buffer[5] = 0;
+     init_buffer[6] = 0;
+     init_buffer[7] = 0;
+     init_buffer[8] = 0; 
+     init_buffer[9] = HERMES_FW_VER;
+     init_buffer[10] = 6;
+     init_buffer[11] = 'H';
+     init_buffer[12] = 'E';
+     init_buffer[13] = 'R';
+     init_buffer[14] = 'M';
+     init_buffer[15] = 'E';
+     init_buffer[16] = 'S';
+     init_buffer[17] = 'L';
+     init_buffer[18] = 'T';
+
+     printf ("Revealing myself as a Hermes LT version %1.1f rcvr. -- WSPR Mode\n",
+	     (float) HERMES_FW_VER / 10.0);
+   }
 
    reveal_socket = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
@@ -1662,6 +1704,9 @@ parse_config (char *conf_file)
 	 else if (!strcmp ("ip_addr", option)) {
 	    strcpy (mcb.ip_addr, value);
 	 }
+	 else if (!strcmp ("rtl_mode", option)) {
+	   mcb.rtl_mode = atoi (value);
+	 }
 	 else if (!strcmp ("if_bw", option)) {
 	   count = set_option (mcb.if_bw, value);
 	 }
@@ -1706,6 +1751,7 @@ main (int argc, char *argv[])
    mcb.cal_state = CAL_STATE_0;
    mcb.calibrate = 0;
    mcb.up_xtal = 0;
+   mcb.rtl_mode = RTL_MODE_SKIMMER;
 
    ftime (&test_start_time);
 
