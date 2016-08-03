@@ -1,4 +1,4 @@
-The Medusa Project
+The Hydra Project
 ======================================================================================
 
 The Hydra project is a collaborative effort between N1GP and NO1D in an attempt
