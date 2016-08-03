@@ -1,7 +1,7 @@
 The Medusa Project
 ======================================================================================
 
-The Medusa project is a collaborative effort between N1GP and NO1D in an attempt
+The Hydra project is a collaborative effort between N1GP and NO1D in an attempt
 to produce a 'n' port CW/RTTY Skimmer platform based on RTL SDR technology.
 
 The work is heavily leveraged from existing projects such as cuSDR and rtl-sdr 
@@ -31,7 +31,7 @@ Challenges:
 
 Project Organization:
 ======================================================================================
-    -- Medusa             Top Level
+    -- Hydra             Top Level
 
       -- Software         Software Top Level
           -- librtlsdr    RTL Libraries and tools
